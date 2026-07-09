@@ -136,4 +136,5 @@ def test_parse_pdf_document_without_extractable_text_returns_empty_document(tmp_
 
     assert document.document_type == "delivery_note"
     assert document.document_number == "scan"
+    assert document.ocr_note is not None
     assert document.items == []

@@ -20,6 +20,7 @@ class ExtractedDocument(BaseModel):
     vendor_name: str
     document_date: str
     document_number: str
+    ocr_note: str | None = None
     items: list[Item]
 
 

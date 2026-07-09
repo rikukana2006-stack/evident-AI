@@ -29,6 +29,7 @@ type ExtractedDocument = {
   vendor_name: string;
   document_date: string;
   document_number: string;
+  ocr_note?: string | null;
   items: Array<{
     item_name: string;
     quantity: number;
@@ -347,13 +348,17 @@ export default function Home() {
                 <div className="flex gap-2">
                   <button className="inline-flex h-10 items-center gap-2 rounded-md border border-line bg-white px-4 font-bold" disabled={loading || !deliveryDocument || !invoiceDocument} onClick={runOcr}>
                     <Play size={17} />
-                    Run Mock OCR
+                    Run OCR
                   </button>
                   <button className="inline-flex h-10 items-center gap-2 rounded-md bg-teal-700 px-4 font-bold text-white disabled:bg-zinc-400" disabled={loading || !canMatch} onClick={saveReviewedDocuments}>
                     <Check size={17} />
                     Save Review
                   </button>
                 </div>
+              </div>
+              <div className="grid gap-3 xl:grid-cols-2">
+                <OcrNote title="Delivery Note" note={deliveryDocument?.ocr_data?.ocr_note} />
+                <OcrNote title="Invoice" note={invoiceDocument?.ocr_data?.ocr_note} />
               </div>
               <div className="grid gap-4 xl:grid-cols-2">
                 <JsonEditor title="Delivery Note JSON" value={deliveryJson} onChange={setDeliveryJson} />
@@ -449,6 +454,16 @@ function JsonEditor({ title, value, onChange }: { title: string; value: string; 
       <span className="text-lg font-bold">{title}</span>
       <textarea className="min-h-[420px] rounded-md border border-line p-3 font-mono text-sm" value={value} onChange={(event) => onChange(event.target.value)} />
     </label>
+  );
+}
+
+function OcrNote({ title, note }: { title: string; note?: string | null }) {
+  if (!note) return null;
+  return (
+    <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+      <div className="font-bold">{title}</div>
+      <div className="mt-1">{note}</div>
+    </div>
   );
 }
 

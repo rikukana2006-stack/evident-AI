@@ -72,13 +72,14 @@ def build_document(document_type: str, filename: str, rows: list[dict[str, objec
     )
 
 
-def build_empty_document(document_type: str, filename: str) -> ExtractedDocument:
+def build_empty_document(document_type: str, filename: str, ocr_note: str | None = None) -> ExtractedDocument:
     return ExtractedDocument.model_validate(
         {
             "document_type": document_type,
             "vendor_name": "",
             "document_date": "",
             "document_number": Path(filename).stem,
+            "ocr_note": ocr_note,
             "items": [],
         }
     )
@@ -198,11 +199,19 @@ def parse_pdf_text_rows(text: str) -> list[dict[str, object]]:
 def parse_pdf_document(document_type: str, filename: str, storage_path: str) -> ExtractedDocument:
     text = extract_pdf_text(storage_path)
     if not text.strip():
-        return build_empty_document(document_type, filename)
+        return build_empty_document(
+            document_type,
+            filename,
+            "\u0050\u0044\u0046\u304b\u3089\u30c6\u30ad\u30b9\u30c8\u3092\u62bd\u51fa\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f\u3002\u753b\u50cf\u0050\u0044\u0046\u306e\u5834\u5408\u306f\u3001\u73fe\u6642\u70b9\u3067\u306f\u624b\u5165\u529b\u307e\u305f\u306f\u0043\u0053\u0056\u002f\u0045\u0078\u0063\u0065\u006c\u3092\u3054\u5229\u7528\u304f\u3060\u3055\u3044\u3002",
+        )
 
     rows = parse_pdf_text_rows(text)
     if not rows:
-        return build_empty_document(document_type, filename)
+        return build_empty_document(
+            document_type,
+            filename,
+            "\u0050\u0044\u0046\u304b\u3089\u6587\u5b57\u306f\u62bd\u51fa\u3067\u304d\u307e\u3057\u305f\u304c\u3001\u660e\u7d30\u884c\u3068\u3057\u3066\u89e3\u6790\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f\u3002\u004f\u0043\u0052\u30ec\u30d3\u30e5\u30fc\u3067\u5185\u5bb9\u3092\u624b\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
+        )
     return build_document(document_type, filename, rows)
 
 
