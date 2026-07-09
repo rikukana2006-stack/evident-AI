@@ -1,0 +1,8 @@
+{
+  "name": "evident-ai",
+  "private": true,
+  "scripts": {
+    "dev:frontend": "npm --prefix frontend run dev",
+    "lint:frontend": "npm --prefix frontend run lint"
+  }
+}
