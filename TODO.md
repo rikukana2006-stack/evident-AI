@@ -8,6 +8,8 @@
 - API経由のE2E確認
   - document upload
   - mock OCR
+  - CSV OCR JSON conversion
+  - XLSX OCR JSON conversion
   - OCR review save
   - matching run
   - hold / approve / reject
@@ -27,11 +29,13 @@
 - PostgreSQL接続での実起動確認
 - Windows実機で、READMEのクリーンインストール手順を最初から最後まで通す確認
 - PDF/画像/Excel/CSVの実ファイルを使った画面アップロード確認
+- `.xls` の本解析
 
 ## 今後確認が必要な点
 
 - mock OCRを実AI OCRに差し替えるためのサービス境界とエラー処理
-- PDF/画像OCR、Excel/CSV解析の本実装
+- PDF/画像OCRの本実装
+- `.xls` バイナリExcel解析の本実装
 - ファイルサイズ上限、保存期間の仕様
 - 認証をmock loginから本実装へ移行する設計
 - PostgreSQL利用時のマイグレーション管理

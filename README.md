@@ -154,6 +154,21 @@ http://localhost:3002
 5. Matching Resultで突合を実行し、差異を確認します。
 6. Approve、Hold、Reject、CSV exportを確認します。
 
+## CSV / Excel Import Format
+
+CSV and `.xlsx` files can be converted into OCR review JSON when they include a
+header row with these columns. Japanese aliases such as `品名`, `数量`, `単価`,
+`金額`, `税率` are also supported.
+
+```csv
+item_name,quantity,unit_price,amount,tax_rate
+明治おいしい牛乳,20,100,2000,8
+パン,30,80,2400,8
+```
+
+PDF and image files currently use mock OCR. They are accepted by the upload flow
+so the real AI OCR service can be connected behind the same API later.
+
 ## GitHubへPushするコマンド
 
 GitHubで空のリポジトリを作成してから、リポジトリルートで実行します。

@@ -10,8 +10,8 @@ from app.csv_export import matching_result_to_csv
 from app.database import Base, engine, get_db
 from app.file_types import ALLOWED_FILE_TYPES_LABEL
 from app.matching import compare_documents
-from app.mock_ocr import run_mock_ocr
 from app.models import Document, MatchingRun
+from app.ocr_service import run_ocr
 from app.schemas import (
     DocumentResponse,
     DocumentType,
@@ -109,7 +109,7 @@ def upload_document(
 @app.post("/documents/{document_id}/ocr", response_model=DocumentResponse)
 def run_document_ocr(document_id: str, db: Session = Depends(get_db)) -> DocumentResponse:
     document = get_document_or_404(db, document_id)
-    ocr_data = run_mock_ocr(document.document_type)
+    ocr_data = run_ocr(document.document_type, document.original_filename, document.storage_path)
     document.ocr_data = ocr_data.model_dump(mode="json")
     document.status = "ocr_review"
     db.commit()
