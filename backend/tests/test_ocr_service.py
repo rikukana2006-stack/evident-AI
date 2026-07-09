@@ -103,6 +103,33 @@ def test_parse_xlsx_document_with_japanese_headers(tmp_path: Path) -> None:
     assert str(document.items[1].tax_rate) == "8"
 
 
+def test_parse_xlsx_document_with_table_header_below_title(tmp_path: Path) -> None:
+    xlsx_path = tmp_path / "template.xlsx"
+    xlsx_path.write_bytes(
+        make_xlsx(
+            [
+                ["", "", "\u7d0d\u54c1\u66f8"],
+                ["", "", ""],
+                ["", "", "", "", "\u9805\u76ee", "", "\u6570\u91cf", "\u5358\u4fa1", "\u91d1\u984d", "\u6d88\u8cbb\u7a0e"],
+                ["9", "\u7ba1\u7406\u8cbb\uff0f\u4eba\u30003\u5e74\u9593", "", "", "", "", 1, 40000, 40000, 4000],
+                ["13", "\u76e3\u7406\u56e3\u4f53\u7acb\u66ff\u5206", "", "", "", "", 1, "", 10124, ""],
+                ["", "\u5099\u8003", "", "", "", "", "", "", 54124, ""],
+                ["", "\u632f\u8fbc\u53e3\u5ea7", "", "", "", "", "", "", "", ""],
+            ]
+        )
+    )
+
+    document = parse_xlsx_document("delivery_note", "template.xlsx", str(xlsx_path))
+
+    assert [item.item_name for item in document.items] == [
+        "\u7ba1\u7406\u8cbb\uff0f\u4eba\u30003\u5e74\u9593",
+        "\u76e3\u7406\u56e3\u4f53\u7acb\u66ff\u5206",
+    ]
+    assert str(document.items[0].amount) == "40000"
+    assert str(document.items[0].tax_rate) == "10"
+    assert str(document.items[1].amount) == "10124"
+
+
 def test_parse_pdf_text_rows_from_extracted_table_text() -> None:
     rows = parse_pdf_text_rows(
         "item quantity unit_price amount tax_rate\n"

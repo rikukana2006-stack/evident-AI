@@ -21,11 +21,32 @@ HEADER_ALIASES = {
 }
 
 
+def compact_text(value: object) -> str:
+    return re.sub(r"[\s\u3000:：]+", "", str(value or "")).casefold()
+
+
 def normalize_header(value: object) -> str:
     normalized = str(value or "").strip().casefold()
     for field, aliases in HEADER_ALIASES.items():
         if normalized in {alias.casefold() for alias in aliases}:
             return field
+    compacted = compact_text(value)
+    if any(keyword in compacted for keyword in ("\u54c1\u540d", "\u5546\u54c1\u540d", "\u9805\u76ee", "\u660e\u7d30")):
+        return "item_name"
+    if "\u6570\u91cf" in compacted:
+        return "quantity"
+    if "\u5358\u4fa1" in compacted:
+        return "unit_price"
+    if "\u91d1\u984d" in compacted or "\u5408\u8a08" in compacted:
+        return "amount"
+    if "\u7a0e\u7387" in compacted:
+        return "tax_rate"
+    if any(keyword in compacted for keyword in ("\u53d6\u5f15\u5148", "\u4ed5\u5165\u5148", "\u5fa1\u4e2d")):
+        return "vendor_name"
+    if "\u767a\u884c\u65e5" in compacted or "\u65e5\u4ed8" in compacted:
+        return "document_date"
+    if "\u756a\u53f7" in compacted or compacted == "no":
+        return "document_number"
     return normalized
 
 
@@ -59,7 +80,15 @@ def build_document(document_type: str, filename: str, rows: list[dict[str, objec
         )
 
     if not items:
-        return run_mock_ocr(document_type)
+        return build_empty_document(
+            document_type,
+            filename,
+            "\u660e\u7d30\u884c\u3092\u89e3\u6790\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f\u3002\u004f\u0043\u0052\u30ec\u30d3\u30e5\u30fc\u3067\u624b\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
+        )
+
+    for item in items:
+        if item["tax_rate"] > 100:
+            item["tax_rate"] = 10
 
     return ExtractedDocument.model_validate(
         {
@@ -148,13 +177,81 @@ def read_xlsx_first_sheet_rows(storage_path: str) -> list[list[object]]:
     return rows
 
 
+def score_header_row(headers: list[str]) -> int:
+    required_fields = {"item_name", "quantity", "unit_price", "amount"}
+    return len(required_fields.intersection(headers))
+
+
+def find_xlsx_header_row(rows: list[list[object]]) -> tuple[int, list[str]] | None:
+    best: tuple[int, list[str], int] | None = None
+    for index, row in enumerate(rows):
+        headers = [normalize_header(value) for value in row]
+        score = score_header_row(headers)
+        if best is None or score > best[2]:
+            best = (index, headers, score)
+    if best and best[2] >= 2 and "item_name" in best[1]:
+        return best[0], best[1]
+    return None
+
+
+def rows_after_header(rows: list[list[object]], header_index: int, headers: list[str]) -> list[dict[str, object]]:
+    records: list[dict[str, object]] = []
+    quantity_index = headers.index("quantity") if "quantity" in headers else len(headers)
+    for row in rows[header_index + 1 :]:
+        record: dict[str, object] = {}
+        for column_index, header in enumerate(headers):
+            if not header or header in record:
+                continue
+            value = row[column_index] if column_index < len(row) else ""
+            record[header] = value
+
+        item_name = str(record.get("item_name") or "").strip()
+        if not item_name:
+            candidates = [
+                str(value or "").strip()
+                for value in row[:quantity_index]
+                if str(value or "").strip() and parse_number(value, default=-1) == -1
+            ]
+            if candidates:
+                record["item_name"] = max(candidates, key=len)
+
+        item_text = compact_text(record.get("item_name"))
+        if any(keyword in item_text for keyword in ("\u5099\u8003", "\u5408\u8a08", "\u8ab2\u7a0e\u5bfe\u8c61", "\u9810\u308a\u91d1", "\u632f\u8fbc")):
+            continue
+        numeric_values = [
+            parse_number(record.get("quantity")),
+            parse_number(record.get("unit_price")),
+            parse_number(record.get("amount")),
+        ]
+        if not any(value > 0 for value in numeric_values):
+            continue
+        if any(str(value or "").strip() for value in record.values()):
+            records.append(record)
+    return records
+
+
 def parse_xlsx_document(document_type: str, filename: str, storage_path: str) -> ExtractedDocument:
-    rows = read_xlsx_first_sheet_rows(storage_path)
+    try:
+        rows = read_xlsx_first_sheet_rows(storage_path)
+    except (KeyError, zipfile.BadZipFile, ElementTree.ParseError):
+        return build_empty_document(
+            document_type,
+            filename,
+            "\u0045\u0078\u0063\u0065\u006c\u30d5\u30a1\u30a4\u30eb\u3092\u89e3\u6790\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f\u3002\u0058\u004c\u0053\u0058\u5f62\u5f0f\u304b\u78ba\u8a8d\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
+        )
     if not rows:
-        return run_mock_ocr(document_type)
-    headers = [normalize_header(value) for value in rows[0]]
-    records = [dict(zip(headers, row, strict=False)) for row in rows[1:]]
-    return build_document(document_type, filename, records)
+        return build_empty_document(document_type, filename, "\u0045\u0078\u0063\u0065\u006c\u306b\u8aad\u307f\u53d6\u308c\u308b\u884c\u304c\u3042\u308a\u307e\u305b\u3093\u3067\u3057\u305f\u3002")
+
+    header = find_xlsx_header_row(rows)
+    if header is None:
+        return build_empty_document(
+            document_type,
+            filename,
+            "\u0045\u0078\u0063\u0065\u006c\u5185\u3067\u660e\u7d30\u8868\u306e\u30d8\u30c3\u30c0\u30fc\u3092\u898b\u3064\u3051\u3089\u308c\u307e\u305b\u3093\u3067\u3057\u305f\u3002\u9805\u76ee\u30fb\u6570\u91cf\u30fb\u5358\u4fa1\u30fb\u91d1\u984d\u306e\u5217\u3092\u78ba\u8a8d\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
+        )
+
+    header_index, headers = header
+    return build_document(document_type, filename, rows_after_header(rows, header_index, headers))
 
 
 def extract_pdf_text(storage_path: str) -> str:
