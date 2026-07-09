@@ -1,11 +1,26 @@
 # TODO
 
+## 確認済み
+
+- GitHub remote設定と `main` ブランチのpush
+- frontend起動確認: `http://localhost:3002`
+- backend起動確認: `http://127.0.0.1:8000/health`
+- API経由のE2E確認
+  - document upload
+  - mock OCR
+  - OCR review save
+  - matching run
+  - hold / approve / reject
+  - CSV export
+- 期待される突合結果
+  - 牛乳: `name_check_required`、数量差異、金額差異
+  - パン: 単価差異、金額差異
+
 ## 現在未確認の点
 
-- PostgreSQL接続での実起動確認は未実施です。現在のMVPはSQLite起動を標準にしています。
-- Windows実機で、READMEのクリーンインストール手順を最初から最後まで通す確認が必要です。
-- GitHub remoteを実際に設定してのpushは未実施です。リポジトリURL決定後に実行してください。
-- backendとfrontendを同時起動した状態で、アップロードからCSV exportまでのE2E確認が必要です。
+- in-app browser上でのクリック操作による画面E2E確認
+- PostgreSQL接続での実起動確認
+- Windows実機で、READMEのクリーンインストール手順を最初から最後まで通す確認
 
 ## 今後確認が必要な点
 
