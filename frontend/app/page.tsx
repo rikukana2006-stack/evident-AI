@@ -71,6 +71,34 @@ const statusLabel: Record<string, string> = {
   rejected: "却下",
 };
 
+const fieldLabel: Record<string, string> = {
+  item_name: "品名",
+  quantity: "数量",
+  unit_price: "単価",
+  amount: "金額",
+  tax_rate: "税率",
+  line_item: "明細",
+};
+
+function formatDifference(field: string, deliveryValue: string | null, invoiceValue: string | null) {
+  if (!deliveryValue || !invoiceValue) return "-";
+  if (!["quantity", "unit_price", "amount", "tax_rate"].includes(field)) return "-";
+
+  const deliveryNumber = Number(deliveryValue);
+  const invoiceNumber = Number(invoiceValue);
+  if (Number.isNaN(deliveryNumber) || Number.isNaN(invoiceNumber)) return "-";
+
+  const difference = invoiceNumber - deliveryNumber;
+  const sign = difference > 0 ? "+" : "";
+  return `${sign}${difference.toLocaleString("ja-JP")}`;
+}
+
+function lineTotal(line: MatchingResult["line_comparisons"][number], side: "delivery_item" | "invoice_item") {
+  const item = line[side];
+  if (!item) return "-";
+  return `${item.quantity.toLocaleString("ja-JP")} × ${item.unit_price.toLocaleString("ja-JP")} = ${item.amount.toLocaleString("ja-JP")}`;
+}
+
 export default function Home() {
   const [screen, setScreen] = useState<Screen>("login");
   const [userEmail, setUserEmail] = useState("demo@evident-ai.local");
@@ -370,6 +398,14 @@ export default function Home() {
                     <Metric label="Different" value={matchingResult.summary.different ?? 0} />
                     <Metric label="Matched" value={matchingResult.summary.matched ?? 0} />
                   </div>
+                  <div className="rounded-lg border border-line bg-white p-4">
+                    <h3 className="text-sm font-bold text-zinc-700">Review focus</h3>
+                    <div className="mt-3 grid gap-3 md:grid-cols-3">
+                      <Metric label="品名確認" value={matchingResult.summary.name_check_required ?? 0} />
+                      <Metric label="数量・単価・金額差異" value={matchingResult.summary.different ?? 0} />
+                      <Metric label="不足明細" value={(matchingResult.summary.missing_invoice_item ?? 0) + (matchingResult.summary.missing_delivery_item ?? 0)} />
+                    </div>
+                  </div>
                   <div className="grid gap-3">
                     {matchingResult.line_comparisons.map((line, index) => (
                       <ResultRow key={index} line={line} />
@@ -431,13 +467,26 @@ function ResultRow({ line }: { line: MatchingResult["line_comparisons"][number] 
         <h3 className="font-bold">{title}</h3>
         <span className={`rounded-full px-3 py-1 text-xs font-bold ${badgeClass}`}>{statusLabel[line.status]}</span>
       </div>
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        <div className="rounded-md bg-zinc-50 p-3">
+          <div className="text-xs font-bold uppercase text-zinc-500">Delivery Note</div>
+          <div className="mt-1 text-sm font-semibold">{line.delivery_item?.item_name ?? "-"}</div>
+          <div className="mt-1 text-sm text-zinc-600">{lineTotal(line, "delivery_item")}</div>
+        </div>
+        <div className="rounded-md bg-zinc-50 p-3">
+          <div className="text-xs font-bold uppercase text-zinc-500">Invoice</div>
+          <div className="mt-1 text-sm font-semibold">{line.invoice_item?.item_name ?? "-"}</div>
+          <div className="mt-1 text-sm text-zinc-600">{lineTotal(line, "invoice_item")}</div>
+        </div>
+      </div>
       <div className="mt-4 overflow-x-auto">
         <table className="w-full min-w-[640px] border-collapse text-sm">
           <thead>
             <tr className="border-t border-line text-left text-zinc-500">
-              <th className="py-2 pr-3">Field</th>
+              <th className="py-2 pr-3">項目</th>
               <th className="py-2 pr-3">Delivery Note</th>
               <th className="py-2 pr-3">Invoice</th>
+              <th className="py-2 pr-3">差分</th>
               <th className="py-2 pr-3">Status</th>
             </tr>
           </thead>
@@ -445,15 +494,16 @@ function ResultRow({ line }: { line: MatchingResult["line_comparisons"][number] 
             {line.differences.length ? (
               line.differences.map((diff) => (
                 <tr className="border-t border-line" key={`${diff.field}-${diff.delivery_value}-${diff.invoice_value}`}>
-                  <td className="py-2 pr-3 font-semibold">{diff.field}</td>
+                  <td className="py-2 pr-3 font-semibold">{fieldLabel[diff.field] ?? diff.field}</td>
                   <td className="py-2 pr-3">{diff.delivery_value ?? "-"}</td>
                   <td className="py-2 pr-3">{diff.invoice_value ?? "-"}</td>
+                  <td className="py-2 pr-3 font-semibold">{formatDifference(diff.field, diff.delivery_value, diff.invoice_value)}</td>
                   <td className="py-2 pr-3">{statusLabel[diff.status]}</td>
                 </tr>
               ))
             ) : (
               <tr className="border-t border-line">
-                <td className="py-2 pr-3" colSpan={4}>
+                <td className="py-2 pr-3" colSpan={5}>
                   All compared fields match.
                 </td>
               </tr>
