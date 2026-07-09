@@ -72,6 +72,18 @@ def build_document(document_type: str, filename: str, rows: list[dict[str, objec
     )
 
 
+def build_empty_document(document_type: str, filename: str) -> ExtractedDocument:
+    return ExtractedDocument.model_validate(
+        {
+            "document_type": document_type,
+            "vendor_name": "",
+            "document_date": "",
+            "document_number": Path(filename).stem,
+            "items": [],
+        }
+    )
+
+
 def read_text_file(path: Path) -> str:
     for encoding in ("utf-8-sig", "cp932", "utf-8"):
         try:
@@ -144,8 +156,60 @@ def parse_xlsx_document(document_type: str, filename: str, storage_path: str) ->
     return build_document(document_type, filename, records)
 
 
+def extract_pdf_text(storage_path: str) -> str:
+    try:
+        from pypdf import PdfReader
+    except ImportError:
+        return ""
+
+    try:
+        reader = PdfReader(storage_path)
+        return "\n".join(page.extract_text() or "" for page in reader.pages)
+    except Exception:
+        return ""
+
+
+def parse_pdf_text_rows(text: str) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        parts = re.split(r"\s+", line)
+        if len(parts) < 5:
+            continue
+
+        numeric_tail = parts[-4:]
+        if any(parse_number(value, default=-1) == -1 for value in numeric_tail):
+            continue
+
+        rows.append(
+            {
+                "item_name": " ".join(parts[:-4]),
+                "quantity": numeric_tail[0],
+                "unit_price": numeric_tail[1],
+                "amount": numeric_tail[2],
+                "tax_rate": numeric_tail[3],
+            }
+        )
+    return rows
+
+
+def parse_pdf_document(document_type: str, filename: str, storage_path: str) -> ExtractedDocument:
+    text = extract_pdf_text(storage_path)
+    if not text.strip():
+        return build_empty_document(document_type, filename)
+
+    rows = parse_pdf_text_rows(text)
+    if not rows:
+        return build_empty_document(document_type, filename)
+    return build_document(document_type, filename, rows)
+
+
 def run_ocr(document_type: str, filename: str, storage_path: str) -> ExtractedDocument:
     extension = get_file_extension(filename)
+    if extension == ".pdf":
+        return parse_pdf_document(document_type, filename, storage_path)
     if extension == ".csv":
         return parse_csv_document(document_type, filename, storage_path)
     if extension == ".xlsx":

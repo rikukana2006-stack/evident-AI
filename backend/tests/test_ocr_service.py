@@ -3,7 +3,7 @@ import zipfile
 from pathlib import Path
 from xml.sax.saxutils import escape
 
-from app.ocr_service import parse_csv_document, parse_xlsx_document
+from app.ocr_service import parse_pdf_document, parse_pdf_text_rows, parse_csv_document, parse_xlsx_document
 
 
 def make_xlsx(rows: list[list[object]]) -> bytes:
@@ -101,3 +101,39 @@ def test_parse_xlsx_document_with_japanese_headers(tmp_path: Path) -> None:
     ]
     assert str(document.items[0].amount) == "2000"
     assert str(document.items[1].tax_rate) == "8"
+
+
+def test_parse_pdf_text_rows_from_extracted_table_text() -> None:
+    rows = parse_pdf_text_rows(
+        "item quantity unit_price amount tax_rate\n"
+        "\u660e\u6cbb\u304a\u3044\u3057\u3044\u725b\u4e73 20 100 2000 8\n"
+        "\u30d1\u30f3 30 80 2400 8\n"
+    )
+
+    assert rows == [
+        {
+            "item_name": "\u660e\u6cbb\u304a\u3044\u3057\u3044\u725b\u4e73",
+            "quantity": "20",
+            "unit_price": "100",
+            "amount": "2000",
+            "tax_rate": "8",
+        },
+        {
+            "item_name": "\u30d1\u30f3",
+            "quantity": "30",
+            "unit_price": "80",
+            "amount": "2400",
+            "tax_rate": "8",
+        },
+    ]
+
+
+def test_parse_pdf_document_without_extractable_text_returns_empty_document(tmp_path: Path) -> None:
+    pdf_path = tmp_path / "scan.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4\n% empty test placeholder\n")
+
+    document = parse_pdf_document("delivery_note", "scan.pdf", str(pdf_path))
+
+    assert document.document_type == "delivery_note"
+    assert document.document_number == "scan"
+    assert document.items == []
