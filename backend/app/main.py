@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.csv_export import matching_result_to_csv
 from app.database import Base, engine, get_db
+from app.file_types import ALLOWED_FILE_TYPES_LABEL
 from app.matching import compare_documents
 from app.mock_ocr import run_mock_ocr
 from app.models import Document, MatchingRun
@@ -20,6 +21,7 @@ from app.schemas import (
     MatchingRunRequest,
 )
 from app.storage import save_upload
+from app.storage import UnsupportedFileTypeError
 
 
 @asynccontextmanager
@@ -77,13 +79,21 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/documents/accepted-file-types")
+def accepted_file_types() -> dict[str, str]:
+    return {"accepted_file_types": ALLOWED_FILE_TYPES_LABEL}
+
+
 @app.post("/documents/upload", response_model=DocumentResponse)
 def upload_document(
     document_type: DocumentType = Form(...),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ) -> DocumentResponse:
-    original_filename, storage_path = save_upload(file)
+    try:
+        original_filename, storage_path = save_upload(file)
+    except UnsupportedFileTypeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     document = Document(
         document_type=document_type,
         original_filename=original_filename,

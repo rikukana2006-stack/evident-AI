@@ -56,6 +56,8 @@ type MatchingResult = {
 };
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
+const ACCEPTED_DOCUMENT_TYPES = ".pdf,.png,.jpg,.jpeg,.webp,.tif,.tiff,.xlsx,.xls,.csv";
+const ACCEPTED_DOCUMENT_TYPES_LABEL = "PDF / 画像 / Excel / CSV";
 
 const statusLabel: Record<string, string> = {
   matched: "一致",
@@ -298,6 +300,7 @@ export default function Home() {
           {screen === "upload" ? (
             <div className="grid gap-5">
               <h2 className="text-2xl font-bold">Document Upload</h2>
+              <p className="text-sm text-zinc-600">対応形式: {ACCEPTED_DOCUMENT_TYPES_LABEL}</p>
               <div className="grid gap-4 lg:grid-cols-2">
                 <FilePicker title="Delivery Note" file={deliveryFile} onChange={setDeliveryFile} />
                 <FilePicker title="Invoice" file={invoiceFile} onChange={setInvoiceFile} />
@@ -397,7 +400,8 @@ function FilePicker({ title, file, onChange }: { title: string; file: File | nul
   return (
     <label className="grid gap-3 rounded-lg border border-line bg-white p-5">
       <span className="text-lg font-bold">{title}</span>
-      <input className="rounded-md border border-line p-2" type="file" onChange={(event) => onChange(event.target.files?.[0] ?? null)} />
+      <input className="rounded-md border border-line p-2" type="file" accept={ACCEPTED_DOCUMENT_TYPES} onChange={(event) => onChange(event.target.files?.[0] ?? null)} />
+      <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">{ACCEPTED_DOCUMENT_TYPES_LABEL}</span>
       <span className="text-sm text-zinc-600">{file?.name ?? "No file selected"}</span>
     </label>
   );

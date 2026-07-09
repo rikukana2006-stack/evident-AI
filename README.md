@@ -23,6 +23,7 @@ evident-ai/
 - Database: SQLite by default, PostgreSQL optional
 - File storage: local storage for MVP
 - OCR: mock OCR service
+- Upload formats: PDF, image, Excel, CSV
 
 ## Windows Prerequisites
 
@@ -148,6 +149,7 @@ http://localhost:3002
 1. Login画面で任意のメールアドレスとパスワードを入力します。
 2. DashboardからDocument Uploadへ進みます。
 3. 納品書と請求書のファイルを選択してアップロードします。
+   - 対応形式: PDF, PNG, JPG, JPEG, WEBP, TIFF, Excel (`.xlsx`, `.xls`), CSV
 4. OCR Reviewでmock OCRを実行し、JSONを確認します。
 5. Matching Resultで突合を実行し、差異を確認します。
 6. Approve、Hold、Reject、CSV exportを確認します。
