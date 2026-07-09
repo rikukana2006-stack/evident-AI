@@ -136,6 +136,9 @@ cd backend
 python -m pytest
 ```
 
+The tests cover CSV/XLSX parsing, matching logic, and the main document upload
+to matching API flow.
+
 ## Frontend 起動方法
 
 別のPowerShellを開き、リポジトリルートから実行します。
