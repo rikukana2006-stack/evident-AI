@@ -128,6 +128,14 @@ uvicorn app.main:app --reload --port 8000
 http://localhost:8000/health
 ```
 
+## Backend テスト
+
+```powershell
+cd backend
+.\.venv\Scripts\Activate.ps1
+python -m pytest
+```
+
 ## Frontend 起動方法
 
 別のPowerShellを開き、リポジトリルートから実行します。

@@ -14,6 +14,10 @@
   - matching run
   - hold / approve / reject
   - CSV export
+- backend unit tests
+  - matching logic
+  - CSV OCR JSON conversion
+  - XLSX OCR JSON conversion
 - 期待される突合結果
   - 牛乳: `name_check_required`、数量差異、金額差異
   - パン: 単価差異、金額差異
@@ -41,4 +45,4 @@
 - PostgreSQL利用時のマイグレーション管理
 - CSV exportの項目名、文字コード、Excel互換性
 - 明細名の類似判定しきい値の業務レビュー
-- テスト追加: matching logic、API、主要画面操作
+- テスト追加: API、主要画面操作
