@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     storage_dir: Path = Path("storage")
     ocr_work_dir: Path = Path("storage/ocr_work")
     vision_ocr_provider: str = "stub"
+    openai_api_key: str | None = None
+    openai_vision_model: str = "gpt-4.1-mini"
+    vision_ocr_max_images: int = 3
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="EVIDENT_")
 

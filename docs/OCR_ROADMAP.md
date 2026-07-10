@@ -43,6 +43,17 @@ EVIDENT_VISION_OCR_PROVIDER=stub
 EVIDENT_OCR_WORK_DIR=storage/ocr_work
 ```
 
+To enable OpenAI Vision OCR:
+
+```env
+EVIDENT_VISION_OCR_PROVIDER=openai
+EVIDENT_OPENAI_API_KEY=sk-...
+EVIDENT_OPENAI_VISION_MODEL=gpt-4.1-mini
+EVIDENT_VISION_OCR_MAX_IMAGES=3
+```
+
+When `EVIDENT_VISION_OCR_PROVIDER=openai`, scanned PDFs are rendered to images first, then the selected images are sent to the OpenAI Responses API. If no API key is configured, the app keeps returning an OCR review note instead of failing the upload flow.
+
 ## Target JSON shape
 
 ```json
@@ -67,7 +78,6 @@ EVIDENT_OCR_WORK_DIR=storage/ocr_work
 
 ## Next tasks
 
-- Add a real vision OCR provider behind the `vision_stub` boundary.
 - Render scanned PDF pages to images before calling vision OCR.
 - Add confidence fields per document and per line item.
 - Add OCR review UI that is easier than editing raw JSON.

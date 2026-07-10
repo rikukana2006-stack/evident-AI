@@ -5,6 +5,7 @@ from xml.sax.saxutils import escape
 
 from app.file_types import is_allowed_upload
 from app.ocr_service import parse_pdf_document, parse_pdf_text_rows, parse_csv_document, parse_xlsx_document, run_ocr
+from app.vision_ocr import parse_openai_ocr_response
 
 
 def make_xlsx(rows: list[list[object]]) -> bytes:
@@ -184,3 +185,29 @@ def test_image_upload_uses_vision_stub_without_demo_fallback(tmp_path: Path) -> 
 
 def test_heic_upload_is_allowed_for_phone_photos() -> None:
     assert is_allowed_upload("receipt.heic")
+
+
+def test_parse_openai_ocr_response_returns_structured_document() -> None:
+    document = parse_openai_ocr_response(
+        "invoice",
+        "invoice.jpg",
+        (
+            '{"document_type":"invoice","vendor_name":"Supplier","document_date":"2026-07-10",'
+            '"document_number":"INV-100","items":[{"item_name":"A","quantity":2,'
+            '"unit_price":100,"amount":200,"tax_rate":10}]}'
+        ),
+    )
+
+    assert document.document_type == "invoice"
+    assert document.vendor_name == "Supplier"
+    assert document.ocr_provider is not None
+    assert document.items[0].item_name == "A"
+
+
+def test_parse_openai_ocr_response_handles_invalid_json() -> None:
+    document = parse_openai_ocr_response("delivery_note", "scan.jpg", "not-json")
+
+    assert document.document_type == "delivery_note"
+    assert document.ocr_provider == "vision_stub:openai_parse_error"
+    assert document.ocr_note is not None
+    assert document.items == []
