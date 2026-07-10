@@ -58,7 +58,7 @@ type MatchingResult = {
 };
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
-const ACCEPTED_DOCUMENT_TYPES = ".pdf,.png,.jpg,.jpeg,.webp,.tif,.tiff,.xlsx,.xls,.csv";
+const ACCEPTED_DOCUMENT_TYPES = ".pdf,.png,.jpg,.jpeg,.webp,.tif,.tiff,.heic,.heif,.xlsx,.xls,.csv";
 const ACCEPTED_DOCUMENT_TYPES_LABEL = "PDF / 画像 / Excel / CSV";
 
 const statusLabel: Record<string, string> = {

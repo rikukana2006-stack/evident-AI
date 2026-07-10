@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./data/evident_ai.db"
     allowed_origins: list[str] = ["http://localhost:3002"]
     storage_dir: Path = Path("storage")
+    ocr_work_dir: Path = Path("storage/ocr_work")
+    vision_ocr_provider: str = "stub"
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="EVIDENT_")
 

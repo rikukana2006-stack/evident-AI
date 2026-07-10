@@ -5,7 +5,7 @@
 - CSV: parsed as structured line item data.
 - XLSX: parsed as structured line item data, including invoice-like templates where the table starts below a title area.
 - Text PDF: text is extracted first, then simple table-like lines are parsed.
-- Scanned PDF: routed to `vision_stub:scan_pdf`.
+- Scanned PDF: rendered to PNG pages under `storage/ocr_work`, then routed to `vision_stub:scan_pdf`.
 - Phone photo / image upload: routed to `vision_stub:image`.
 - XLS: accepted for upload, but returns `spreadsheet:xls_unsupported` until a legacy Excel parser is added.
 
@@ -35,6 +35,13 @@ The current placeholder providers are:
 - `unsupported`
 
 The next implementation should replace `vision_stub:*` with a real provider while keeping the response shape stable.
+
+The active provider is controlled by:
+
+```env
+EVIDENT_VISION_OCR_PROVIDER=stub
+EVIDENT_OCR_WORK_DIR=storage/ocr_work
+```
 
 ## Target JSON shape
 

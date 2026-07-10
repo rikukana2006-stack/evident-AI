@@ -6,6 +6,7 @@ from xml.etree import ElementTree
 
 from app.file_types import get_file_extension, is_image_upload
 from app.schemas import ExtractedDocument
+from app.vision_ocr import run_vision_ocr
 
 
 HEADER_ALIASES = {
@@ -122,20 +123,6 @@ def build_empty_document(
             "ocr_provider": ocr_provider,
             "items": [],
         }
-    )
-
-
-def run_vision_stub_ocr(document_type: str, filename: str, source_kind: str) -> ExtractedDocument:
-    return build_empty_document(
-        document_type,
-        filename,
-        (
-            "\u753b\u50cf\u004f\u0043\u0052\u9023\u643a\u306f\u672a\u63a5\u7d9a\u3067\u3059\u3002"
-            "\u30b9\u30ad\u30e3\u30f3\u0050\u0044\u0046\u3084\u30b9\u30de\u30db\u5199\u771f\u306f\u3001"
-            "\u73fe\u6642\u70b9\u3067\u306f\u004f\u0043\u0052\u30ec\u30d3\u30e5\u30fc\u3067\u624b\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002"
-            "\u5f8c\u7d9a\u3067\u0041\u0049\u0020\u004f\u0043\u0052\u3092\u63a5\u7d9a\u3059\u308b\u60f3\u5b9a\u306e\u5165\u53e3\u3067\u3059\u3002"
-        ),
-        f"vision_stub:{source_kind}",
     )
 
 
@@ -321,7 +308,7 @@ def parse_pdf_text_rows(text: str) -> list[dict[str, object]]:
 def parse_pdf_document(document_type: str, filename: str, storage_path: str) -> ExtractedDocument:
     text = extract_pdf_text(storage_path)
     if not text.strip():
-        return run_vision_stub_ocr(document_type, filename, "scan_pdf")
+        return run_vision_ocr(document_type, filename, storage_path, "scan_pdf")
 
     rows = parse_pdf_text_rows(text)
     if not rows:
@@ -336,7 +323,7 @@ def parse_pdf_document(document_type: str, filename: str, storage_path: str) -> 
 def run_ocr(document_type: str, filename: str, storage_path: str) -> ExtractedDocument:
     extension = get_file_extension(filename)
     if is_image_upload(filename):
-        return run_vision_stub_ocr(document_type, filename, "image")
+        return run_vision_ocr(document_type, filename, storage_path, "image")
     if extension == ".pdf":
         return parse_pdf_document(document_type, filename, storage_path)
     if extension == ".csv":
