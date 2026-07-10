@@ -40,6 +40,8 @@ type ExtractedDocument = {
   }>;
 };
 
+type ExtractedItem = ExtractedDocument["items"][number];
+
 type MatchingResult = {
   matching_id: string;
   status: "matched" | "review_required" | "approved" | "held" | "rejected";
@@ -99,6 +101,28 @@ function lineTotal(line: MatchingResult["line_comparisons"][number], side: "deli
   const item = line[side];
   if (!item) return "-";
   return `${item.quantity.toLocaleString("ja-JP")} × ${item.unit_price.toLocaleString("ja-JP")} = ${item.amount.toLocaleString("ja-JP")}`;
+}
+
+function parseDocumentJson(value: string): ExtractedDocument | null {
+  try {
+    return JSON.parse(value) as ExtractedDocument;
+  } catch {
+    return null;
+  }
+}
+
+function stringifyDocument(document: ExtractedDocument) {
+  return JSON.stringify(document, null, 2);
+}
+
+function emptyItem(): ExtractedItem {
+  return {
+    item_name: "",
+    quantity: 0,
+    unit_price: 0,
+    amount: 0,
+    tax_rate: 10,
+  };
 }
 
 export default function Home() {
@@ -362,8 +386,8 @@ export default function Home() {
                 <OcrNote title="Invoice" provider={invoiceDocument?.ocr_data?.ocr_provider} note={invoiceDocument?.ocr_data?.ocr_note} />
               </div>
               <div className="grid gap-4 xl:grid-cols-2">
-                <JsonEditor title="Delivery Note JSON" value={deliveryJson} onChange={setDeliveryJson} />
-                <JsonEditor title="Invoice JSON" value={invoiceJson} onChange={setInvoiceJson} />
+                <OcrReviewPanel title="Delivery Note" value={deliveryJson} onChange={setDeliveryJson} />
+                <OcrReviewPanel title="Invoice" value={invoiceJson} onChange={setInvoiceJson} />
               </div>
             </div>
           ) : null}
@@ -449,9 +473,133 @@ function FilePicker({ title, file, onChange }: { title: string; file: File | nul
   );
 }
 
-function JsonEditor({ title, value, onChange }: { title: string; value: string; onChange: (value: string) => void }) {
+function OcrReviewPanel({ title, value, onChange }: { title: string; value: string; onChange: (value: string) => void }) {
+  const document = parseDocumentJson(value);
+
+  function updateDocument(updater: (document: ExtractedDocument) => ExtractedDocument) {
+    if (!document) return;
+    onChange(stringifyDocument(updater(document)));
+  }
+
+  function updateField(field: keyof Pick<ExtractedDocument, "vendor_name" | "document_date" | "document_number">, nextValue: string) {
+    updateDocument((current) => ({ ...current, [field]: nextValue }));
+  }
+
+  function updateItem(index: number, field: keyof ExtractedItem, nextValue: string) {
+    updateDocument((current) => ({
+      ...current,
+      items: current.items.map((item, itemIndex) =>
+        itemIndex === index
+          ? {
+              ...item,
+              [field]: field === "item_name" ? nextValue : Number(nextValue || 0),
+            }
+          : item,
+      ),
+    }));
+  }
+
+  function addItem() {
+    updateDocument((current) => ({ ...current, items: [...current.items, emptyItem()] }));
+  }
+
+  function removeItem(index: number) {
+    updateDocument((current) => ({ ...current, items: current.items.filter((_, itemIndex) => itemIndex !== index) }));
+  }
+
+  if (!document) {
+    return <JsonEditor title={`${title} JSON`} value={value} onChange={onChange} />;
+  }
+
   return (
-    <label className="grid gap-3 rounded-lg border border-line bg-white p-5">
+    <section className="grid gap-4 rounded-lg border border-line bg-white p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="text-lg font-bold">{title}</h3>
+          <div className="mt-1 text-xs font-semibold text-zinc-500">{document.items.length} line items</div>
+        </div>
+        <button className="h-9 rounded-md border border-line bg-white px-3 text-sm font-bold" type="button" onClick={addItem}>
+          Add line
+        </button>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-3">
+        <label className="grid gap-1 text-sm font-semibold">
+          Vendor
+          <input className="h-10 rounded-md border border-line px-3 font-normal" value={document.vendor_name} onChange={(event) => updateField("vendor_name", event.target.value)} />
+        </label>
+        <label className="grid gap-1 text-sm font-semibold">
+          Date
+          <input className="h-10 rounded-md border border-line px-3 font-normal" value={document.document_date} onChange={(event) => updateField("document_date", event.target.value)} />
+        </label>
+        <label className="grid gap-1 text-sm font-semibold">
+          Number
+          <input className="h-10 rounded-md border border-line px-3 font-normal" value={document.document_number} onChange={(event) => updateField("document_number", event.target.value)} />
+        </label>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[760px] border-collapse text-sm">
+          <thead>
+            <tr className="border-y border-line text-left text-zinc-500">
+              <th className="py-2 pr-2">Item</th>
+              <th className="py-2 pr-2">Qty</th>
+              <th className="py-2 pr-2">Unit</th>
+              <th className="py-2 pr-2">Amount</th>
+              <th className="py-2 pr-2">Tax</th>
+              <th className="py-2 pr-2"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {document.items.map((item, index) => (
+              <tr className="border-b border-line" key={index}>
+                <td className="py-2 pr-2">
+                  <input className="h-10 w-full min-w-[220px] rounded-md border border-line px-2" value={item.item_name} onChange={(event) => updateItem(index, "item_name", event.target.value)} />
+                </td>
+                <td className="py-2 pr-2">
+                  <input className="h-10 w-24 rounded-md border border-line px-2" type="number" value={item.quantity} onChange={(event) => updateItem(index, "quantity", event.target.value)} />
+                </td>
+                <td className="py-2 pr-2">
+                  <input className="h-10 w-28 rounded-md border border-line px-2" type="number" value={item.unit_price} onChange={(event) => updateItem(index, "unit_price", event.target.value)} />
+                </td>
+                <td className="py-2 pr-2">
+                  <input className="h-10 w-28 rounded-md border border-line px-2" type="number" value={item.amount} onChange={(event) => updateItem(index, "amount", event.target.value)} />
+                </td>
+                <td className="py-2 pr-2">
+                  <input className="h-10 w-20 rounded-md border border-line px-2" type="number" value={item.tax_rate} onChange={(event) => updateItem(index, "tax_rate", event.target.value)} />
+                </td>
+                <td className="py-2 pr-2 text-right">
+                  <button className="h-9 rounded-md border border-line px-3 text-sm font-bold text-red-700" type="button" onClick={() => removeItem(index)}>
+                    Remove
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {document.items.length === 0 ? (
+              <tr className="border-b border-line">
+                <td className="py-4 text-zinc-500" colSpan={6}>
+                  No line items yet. Add lines from the OCR result or manual review.
+                </td>
+              </tr>
+            ) : null}
+          </tbody>
+        </table>
+      </div>
+
+      <details>
+        <summary className="cursor-pointer text-sm font-bold text-zinc-600">Raw JSON</summary>
+        <div className="mt-3">
+          <JsonEditor title={`${title} JSON`} value={value} onChange={onChange} framed={false} />
+        </div>
+      </details>
+    </section>
+  );
+}
+
+function JsonEditor({ title, value, onChange, framed = true }: { title: string; value: string; onChange: (value: string) => void; framed?: boolean }) {
+  const className = framed ? "grid gap-3 rounded-lg border border-line bg-white p-5" : "grid gap-3";
+  return (
+    <label className={className}>
       <span className="text-lg font-bold">{title}</span>
       <textarea className="min-h-[420px] rounded-md border border-line p-3 font-mono text-sm" value={value} onChange={(event) => onChange(event.target.value)} />
     </label>
