@@ -21,6 +21,7 @@ class ExtractedDocument(BaseModel):
     document_date: str
     document_number: str
     ocr_note: str | None = None
+    ocr_provider: str | None = None
     items: list[Item]
 
 

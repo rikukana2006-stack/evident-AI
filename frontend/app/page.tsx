@@ -30,6 +30,7 @@ type ExtractedDocument = {
   document_date: string;
   document_number: string;
   ocr_note?: string | null;
+  ocr_provider?: string | null;
   items: Array<{
     item_name: string;
     quantity: number;
@@ -357,8 +358,8 @@ export default function Home() {
                 </div>
               </div>
               <div className="grid gap-3 xl:grid-cols-2">
-                <OcrNote title="Delivery Note" note={deliveryDocument?.ocr_data?.ocr_note} />
-                <OcrNote title="Invoice" note={invoiceDocument?.ocr_data?.ocr_note} />
+                <OcrNote title="Delivery Note" provider={deliveryDocument?.ocr_data?.ocr_provider} note={deliveryDocument?.ocr_data?.ocr_note} />
+                <OcrNote title="Invoice" provider={invoiceDocument?.ocr_data?.ocr_provider} note={invoiceDocument?.ocr_data?.ocr_note} />
               </div>
               <div className="grid gap-4 xl:grid-cols-2">
                 <JsonEditor title="Delivery Note JSON" value={deliveryJson} onChange={setDeliveryJson} />
@@ -457,12 +458,13 @@ function JsonEditor({ title, value, onChange }: { title: string; value: string; 
   );
 }
 
-function OcrNote({ title, note }: { title: string; note?: string | null }) {
-  if (!note) return null;
+function OcrNote({ title, provider, note }: { title: string; provider?: string | null; note?: string | null }) {
+  if (!note && !provider) return null;
   return (
     <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
       <div className="font-bold">{title}</div>
-      <div className="mt-1">{note}</div>
+      {provider ? <div className="mt-1 font-mono text-xs">{provider}</div> : null}
+      {note ? <div className="mt-1">{note}</div> : null}
     </div>
   );
 }

@@ -3,7 +3,8 @@ import zipfile
 from pathlib import Path
 from xml.sax.saxutils import escape
 
-from app.ocr_service import parse_pdf_document, parse_pdf_text_rows, parse_csv_document, parse_xlsx_document
+from app.file_types import is_allowed_upload
+from app.ocr_service import parse_pdf_document, parse_pdf_text_rows, parse_csv_document, parse_xlsx_document, run_ocr
 
 
 def make_xlsx(rows: list[list[object]]) -> bytes:
@@ -164,4 +165,22 @@ def test_parse_pdf_document_without_extractable_text_returns_empty_document(tmp_
     assert document.document_type == "delivery_note"
     assert document.document_number == "scan"
     assert document.ocr_note is not None
+    assert document.ocr_provider == "vision_stub:scan_pdf"
     assert document.items == []
+
+
+def test_image_upload_uses_vision_stub_without_demo_fallback(tmp_path: Path) -> None:
+    image_path = tmp_path / "phone-photo.jpg"
+    image_path.write_bytes(b"fake image bytes")
+
+    document = run_ocr("invoice", "phone-photo.jpg", str(image_path))
+
+    assert document.document_type == "invoice"
+    assert document.document_number == "phone-photo"
+    assert document.ocr_provider == "vision_stub:image"
+    assert document.ocr_note is not None
+    assert document.items == []
+
+
+def test_heic_upload_is_allowed_for_phone_photos() -> None:
+    assert is_allowed_upload("receipt.heic")

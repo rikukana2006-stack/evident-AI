@@ -4,8 +4,7 @@ import zipfile
 from pathlib import Path
 from xml.etree import ElementTree
 
-from app.file_types import get_file_extension
-from app.mock_ocr import run_mock_ocr
+from app.file_types import get_file_extension, is_image_upload
 from app.schemas import ExtractedDocument
 
 
@@ -62,7 +61,12 @@ def parse_number(value: object, default: int = 0) -> float | int:
     return int(number) if number.is_integer() else number
 
 
-def build_document(document_type: str, filename: str, rows: list[dict[str, object]]) -> ExtractedDocument:
+def build_document(
+    document_type: str,
+    filename: str,
+    rows: list[dict[str, object]],
+    ocr_provider: str | None = None,
+) -> ExtractedDocument:
     items = []
     first_row = rows[0] if rows else {}
     for row in rows:
@@ -96,12 +100,18 @@ def build_document(document_type: str, filename: str, rows: list[dict[str, objec
             "vendor_name": str(first_row.get("vendor_name") or "未設定"),
             "document_date": str(first_row.get("document_date") or "未設定"),
             "document_number": str(first_row.get("document_number") or Path(filename).stem),
+            "ocr_provider": ocr_provider,
             "items": items,
         }
     )
 
 
-def build_empty_document(document_type: str, filename: str, ocr_note: str | None = None) -> ExtractedDocument:
+def build_empty_document(
+    document_type: str,
+    filename: str,
+    ocr_note: str | None = None,
+    ocr_provider: str | None = None,
+) -> ExtractedDocument:
     return ExtractedDocument.model_validate(
         {
             "document_type": document_type,
@@ -109,8 +119,23 @@ def build_empty_document(document_type: str, filename: str, ocr_note: str | None
             "document_date": "",
             "document_number": Path(filename).stem,
             "ocr_note": ocr_note,
+            "ocr_provider": ocr_provider,
             "items": [],
         }
+    )
+
+
+def run_vision_stub_ocr(document_type: str, filename: str, source_kind: str) -> ExtractedDocument:
+    return build_empty_document(
+        document_type,
+        filename,
+        (
+            "\u753b\u50cf\u004f\u0043\u0052\u9023\u643a\u306f\u672a\u63a5\u7d9a\u3067\u3059\u3002"
+            "\u30b9\u30ad\u30e3\u30f3\u0050\u0044\u0046\u3084\u30b9\u30de\u30db\u5199\u771f\u306f\u3001"
+            "\u73fe\u6642\u70b9\u3067\u306f\u004f\u0043\u0052\u30ec\u30d3\u30e5\u30fc\u3067\u624b\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002"
+            "\u5f8c\u7d9a\u3067\u0041\u0049\u0020\u004f\u0043\u0052\u3092\u63a5\u7d9a\u3059\u308b\u60f3\u5b9a\u306e\u5165\u53e3\u3067\u3059\u3002"
+        ),
+        f"vision_stub:{source_kind}",
     )
 
 
@@ -127,7 +152,7 @@ def parse_csv_document(document_type: str, filename: str, storage_path: str) -> 
     text = read_text_file(Path(storage_path))
     reader = csv.DictReader(text.splitlines())
     rows = [{normalize_header(key): value for key, value in row.items()} for row in reader]
-    return build_document(document_type, filename, rows)
+    return build_document(document_type, filename, rows, "spreadsheet:csv")
 
 
 def column_index(cell_ref: str) -> int:
@@ -251,7 +276,7 @@ def parse_xlsx_document(document_type: str, filename: str, storage_path: str) ->
         )
 
     header_index, headers = header
-    return build_document(document_type, filename, rows_after_header(rows, header_index, headers))
+    return build_document(document_type, filename, rows_after_header(rows, header_index, headers), "spreadsheet:xlsx")
 
 
 def extract_pdf_text(storage_path: str) -> str:
@@ -296,11 +321,7 @@ def parse_pdf_text_rows(text: str) -> list[dict[str, object]]:
 def parse_pdf_document(document_type: str, filename: str, storage_path: str) -> ExtractedDocument:
     text = extract_pdf_text(storage_path)
     if not text.strip():
-        return build_empty_document(
-            document_type,
-            filename,
-            "\u0050\u0044\u0046\u304b\u3089\u30c6\u30ad\u30b9\u30c8\u3092\u62bd\u51fa\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f\u3002\u753b\u50cf\u0050\u0044\u0046\u306e\u5834\u5408\u306f\u3001\u73fe\u6642\u70b9\u3067\u306f\u624b\u5165\u529b\u307e\u305f\u306f\u0043\u0053\u0056\u002f\u0045\u0078\u0063\u0065\u006c\u3092\u3054\u5229\u7528\u304f\u3060\u3055\u3044\u3002",
-        )
+        return run_vision_stub_ocr(document_type, filename, "scan_pdf")
 
     rows = parse_pdf_text_rows(text)
     if not rows:
@@ -309,15 +330,29 @@ def parse_pdf_document(document_type: str, filename: str, storage_path: str) -> 
             filename,
             "\u0050\u0044\u0046\u304b\u3089\u6587\u5b57\u306f\u62bd\u51fa\u3067\u304d\u307e\u3057\u305f\u304c\u3001\u660e\u7d30\u884c\u3068\u3057\u3066\u89e3\u6790\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f\u3002\u004f\u0043\u0052\u30ec\u30d3\u30e5\u30fc\u3067\u5185\u5bb9\u3092\u624b\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
         )
-    return build_document(document_type, filename, rows)
+    return build_document(document_type, filename, rows, "text_pdf")
 
 
 def run_ocr(document_type: str, filename: str, storage_path: str) -> ExtractedDocument:
     extension = get_file_extension(filename)
+    if is_image_upload(filename):
+        return run_vision_stub_ocr(document_type, filename, "image")
     if extension == ".pdf":
         return parse_pdf_document(document_type, filename, storage_path)
     if extension == ".csv":
         return parse_csv_document(document_type, filename, storage_path)
     if extension == ".xlsx":
         return parse_xlsx_document(document_type, filename, storage_path)
-    return run_mock_ocr(document_type)
+    if extension == ".xls":
+        return build_empty_document(
+            document_type,
+            filename,
+            "\u53e4\u3044\u0045\u0078\u0063\u0065\u006c\u5f62\u5f0f\u0028\u002e\u0078\u006c\u0073\u0029\u306f\u73fe\u6642\u70b9\u3067\u306f\u81ea\u52d5\u89e3\u6790\u306b\u672a\u5bfe\u5fdc\u3067\u3059\u3002\u002e\u0078\u006c\u0073\u0078\u307e\u305f\u306f\u0043\u0053\u0056\u306b\u5909\u63db\u3059\u308b\u304b\u3001\u004f\u0043\u0052\u30ec\u30d3\u30e5\u30fc\u3067\u624b\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
+            "spreadsheet:xls_unsupported",
+        )
+    return build_empty_document(
+        document_type,
+        filename,
+        "\u3053\u306e\u30d5\u30a1\u30a4\u30eb\u5f62\u5f0f\u306f\u004f\u0043\u0052\u306e\u81ea\u52d5\u89e3\u6790\u306b\u672a\u5bfe\u5fdc\u3067\u3059\u3002",
+        "unsupported",
+    )
