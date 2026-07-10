@@ -1,8 +1,9 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -82,6 +83,15 @@ def health() -> dict[str, str]:
 @app.get("/documents/accepted-file-types")
 def accepted_file_types() -> dict[str, str]:
     return {"accepted_file_types": ALLOWED_FILE_TYPES_LABEL}
+
+
+@app.get("/documents/{document_id}/file")
+def get_document_file(document_id: str, db: Session = Depends(get_db)) -> FileResponse:
+    document = get_document_or_404(db, document_id)
+    path = Path(document.storage_path)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Document file not found")
+    return FileResponse(path, filename=document.original_filename)
 
 
 @app.post("/documents/upload", response_model=DocumentResponse)

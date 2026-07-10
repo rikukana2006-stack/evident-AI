@@ -67,6 +67,10 @@ def test_api_flow_from_csv_upload_to_csv_export(client: TestClient) -> None:
     delivery = upload_csv(client, "delivery_note", "delivery.csv", delivery_csv)
     invoice = upload_csv(client, "invoice", "invoice.csv", invoice_csv)
 
+    delivery_file = client.get(f"/documents/{delivery['id']}/file")
+    assert delivery_file.status_code == 200
+    assert delivery_file.content.startswith(b"\xef\xbb\xbfitem_name")
+
     delivery_ocr = client.post(f"/documents/{delivery['id']}/ocr")
     invoice_ocr = client.post(f"/documents/{invoice['id']}/ocr")
     assert delivery_ocr.status_code == 200

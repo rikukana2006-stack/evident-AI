@@ -125,6 +125,14 @@ function emptyItem(): ExtractedItem {
   };
 }
 
+function documentFileUrl(document: DocumentRecord | null) {
+  return document ? `${API_BASE}/documents/${document.id}/file` : "";
+}
+
+function fileExtension(filename: string) {
+  return filename.split(".").pop()?.toLowerCase() ?? "";
+}
+
 export default function Home() {
   const [screen, setScreen] = useState<Screen>("login");
   const [userEmail, setUserEmail] = useState("demo@evident-ai.local");
@@ -386,8 +394,8 @@ export default function Home() {
                 <OcrNote title="Invoice" provider={invoiceDocument?.ocr_data?.ocr_provider} note={invoiceDocument?.ocr_data?.ocr_note} />
               </div>
               <div className="grid gap-4 xl:grid-cols-2">
-                <OcrReviewPanel title="Delivery Note" value={deliveryJson} onChange={setDeliveryJson} />
-                <OcrReviewPanel title="Invoice" value={invoiceJson} onChange={setInvoiceJson} />
+                <OcrWorkspace title="Delivery Note" document={deliveryDocument} value={deliveryJson} onChange={setDeliveryJson} />
+                <OcrWorkspace title="Invoice" document={invoiceDocument} value={invoiceJson} onChange={setInvoiceJson} />
               </div>
             </div>
           ) : null}
@@ -470,6 +478,52 @@ function FilePicker({ title, file, onChange }: { title: string; file: File | nul
       <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">{ACCEPTED_DOCUMENT_TYPES_LABEL}</span>
       <span className="text-sm text-zinc-600">{file?.name ?? "No file selected"}</span>
     </label>
+  );
+}
+
+function OcrWorkspace({ title, document, value, onChange }: { title: string; document: DocumentRecord | null; value: string; onChange: (value: string) => void }) {
+  return (
+    <section className="grid gap-4">
+      <DocumentPreview title={title} document={document} />
+      <OcrReviewPanel title={title} value={value} onChange={onChange} />
+    </section>
+  );
+}
+
+function DocumentPreview({ title, document }: { title: string; document: DocumentRecord | null }) {
+  if (!document) {
+    return (
+      <section className="rounded-lg border border-line bg-white p-5">
+        <h3 className="text-lg font-bold">{title} Source</h3>
+        <div className="mt-3 text-sm text-zinc-500">No file uploaded.</div>
+      </section>
+    );
+  }
+
+  const source = documentFileUrl(document);
+  const extension = fileExtension(document.original_filename);
+  const isImage = ["png", "jpg", "jpeg", "webp", "tif", "tiff", "heic", "heif"].includes(extension);
+  const isPdf = extension === "pdf";
+
+  return (
+    <section className="grid gap-3 rounded-lg border border-line bg-white p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="text-lg font-bold">{title} Source</h3>
+          <div className="mt-1 text-xs font-semibold text-zinc-500">{document.original_filename}</div>
+        </div>
+        <a className="rounded-md border border-line px-3 py-2 text-sm font-bold" href={source} target="_blank" rel="noreferrer">
+          Open file
+        </a>
+      </div>
+
+      {isPdf ? <iframe className="h-[420px] w-full rounded-md border border-line bg-zinc-50" src={source} title={`${title} PDF preview`} /> : null}
+      {isImage ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img className="max-h-[420px] w-full rounded-md border border-line object-contain" src={source} alt={`${title} source`} />
+      ) : null}
+      {!isPdf && !isImage ? <div className="rounded-md border border-line bg-zinc-50 p-4 text-sm text-zinc-600">Preview is not available for this file type. Use Open file.</div> : null}
+    </section>
   );
 }
 
