@@ -8,7 +8,7 @@ import pytest
 from app.config import settings
 from app.file_types import is_allowed_upload
 from app.ocr_service import parse_pdf_document, parse_pdf_text_rows, parse_csv_document, parse_xlsx_document, run_ocr
-from app.vision_ocr import parse_ocr_text_rows, parse_openai_ocr_response, parse_paddle_token_rows
+from app.vision_ocr import parse_ocr_text_rows, parse_openai_ocr_response, parse_paddle_token_rows, prepare_paddle_input_images
 
 
 @pytest.fixture(autouse=True)
@@ -271,3 +271,15 @@ def test_parse_paddle_token_rows_estimates_line_from_ocr_cells() -> None:
             "tax_rate": 10,
         }
     ]
+
+
+def test_prepare_paddle_input_images_uses_ascii_paths(tmp_path: Path) -> None:
+    source = tmp_path / "\u6c34\u91ce\u7d0d\u54c1\u66f8-1.png"
+    source.write_bytes(b"png bytes")
+    cache_root = tmp_path / "paddle-cache"
+
+    prepared = prepare_paddle_input_images([source], cache_root)
+
+    assert prepared[0].name == "page_1.png"
+    assert prepared[0].read_bytes() == b"png bytes"
+    assert str(prepared[0]).isascii()

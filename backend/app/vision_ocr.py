@@ -6,12 +6,20 @@ import re
 import shutil
 import subprocess
 import tempfile
+import threading
 from pathlib import Path
+from typing import Any
+from uuid import uuid4
 
 import httpx
 
 from app.config import settings
 from app.schemas import ExtractedDocument
+
+
+_paddle_ocr_instance: Any | None = None
+_paddle_ocr_key: tuple[str, str] | None = None
+_paddle_ocr_lock = threading.Lock()
 
 
 VISION_OCR_PROMPT = """
@@ -43,7 +51,7 @@ Rules:
 """.strip()
 
 
-def configure_paddle_cache() -> None:
+def configure_paddle_cache() -> Path:
     # Paddle's native inference layer can fail on Windows when model paths contain
     # non-ASCII characters. Use an ASCII temp path by default, while still allowing
     # deployments to pin the cache with EVIDENT_PADDLE_CACHE_DIR.
@@ -61,6 +69,43 @@ def configure_paddle_cache() -> None:
     os.environ.setdefault("PADDLE_HOME", str(cache_root / "paddle"))
     os.environ.setdefault("XDG_CACHE_HOME", str(cache_root / "xdg"))
     os.environ.setdefault("DISABLE_MODEL_SOURCE_CHECK", "True")
+    return cache_root
+
+
+def get_paddle_ocr() -> Any:
+    global _paddle_ocr_instance, _paddle_ocr_key
+
+    configure_paddle_cache()
+    key = (settings.paddle_ocr_lang, settings.paddle_ocr_version)
+    with _paddle_ocr_lock:
+        if _paddle_ocr_instance is not None and _paddle_ocr_key == key:
+            return _paddle_ocr_instance
+
+        from paddleocr import PaddleOCR
+
+        _paddle_ocr_instance = PaddleOCR(
+            lang=settings.paddle_ocr_lang,
+            ocr_version=settings.paddle_ocr_version,
+            use_doc_orientation_classify=False,
+            use_doc_unwarping=False,
+            use_textline_orientation=False,
+        )
+        _paddle_ocr_key = key
+        return _paddle_ocr_instance
+
+
+def prepare_paddle_input_images(image_paths: list[Path], cache_root: Path) -> list[Path]:
+    run_dir = cache_root / "input_images" / uuid4().hex
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    prepared_paths: list[Path] = []
+    for index, image_path in enumerate(image_paths, start=1):
+        suffix = image_path.suffix if image_path.suffix else ".png"
+        prepared_path = run_dir / f"page_{index}{suffix}"
+        shutil.copyfile(image_path, prepared_path)
+        prepared_paths.append(prepared_path)
+
+    return prepared_paths
 
 
 def find_pdftoppm_executable() -> str | None:
@@ -350,9 +395,9 @@ def run_paddle_vision_ocr(
     source_kind: str,
     image_paths: list[Path],
 ) -> ExtractedDocument:
-    configure_paddle_cache()
     try:
-        from paddleocr import PaddleOCR
+        cache_root = configure_paddle_cache()
+        ocr = get_paddle_ocr()
     except ImportError:
         return build_empty_vision_document(
             document_type,
@@ -364,13 +409,7 @@ def run_paddle_vision_ocr(
 
     selected_images = image_paths[: settings.vision_ocr_max_images]
     try:
-        ocr = PaddleOCR(
-            lang=settings.paddle_ocr_lang,
-            ocr_version=settings.paddle_ocr_version,
-            use_doc_orientation_classify=False,
-            use_doc_unwarping=False,
-            use_textline_orientation=False,
-        )
+        selected_images = prepare_paddle_input_images(selected_images, cache_root)
         text_lines: list[str] = []
         for image_path in selected_images:
             if hasattr(ocr, "ocr"):
