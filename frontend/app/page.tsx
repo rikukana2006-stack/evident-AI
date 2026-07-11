@@ -11,7 +11,7 @@ import {
   ShieldCheck,
   X,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type Screen = "login" | "dashboard" | "upload" | "ocr" | "result";
 type DocumentType = "delivery_note" | "invoice";
@@ -57,6 +57,14 @@ type MatchingResult = {
       status: "matched" | "different" | "name_check_required";
     }>;
   }>;
+};
+
+type OcrStatus = {
+  vision_ocr_provider: string;
+  openai_api_key_configured: boolean;
+  openai_vision_model: string;
+  vision_ocr_max_images: number;
+  paddle_ocr_lang?: string;
 };
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
@@ -144,6 +152,7 @@ export default function Home() {
   const [deliveryJson, setDeliveryJson] = useState("");
   const [invoiceJson, setInvoiceJson] = useState("");
   const [matchingResult, setMatchingResult] = useState<MatchingResult | null>(null);
+  const [ocrStatus, setOcrStatus] = useState<OcrStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -168,6 +177,14 @@ export default function Home() {
     }
     return response.json();
   }
+
+  useEffect(() => {
+    if (screen !== "ocr") return;
+    fetch(`${API_BASE}/ocr/status`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => setOcrStatus(data as OcrStatus | null))
+      .catch(() => setOcrStatus(null));
+  }, [screen]);
 
   async function uploadOne(documentType: DocumentType, file: File) {
     const form = new FormData();
@@ -381,7 +398,7 @@ export default function Home() {
                 <div className="flex gap-2">
                   <button className="inline-flex h-10 items-center gap-2 rounded-md border border-line bg-white px-4 font-bold" disabled={loading || !deliveryDocument || !invoiceDocument} onClick={runOcr}>
                     <Play size={17} />
-                    Run OCR
+                    Run AI OCR
                   </button>
                   <button className="inline-flex h-10 items-center gap-2 rounded-md bg-teal-700 px-4 font-bold text-white disabled:bg-zinc-400" disabled={loading || !canMatch} onClick={saveReviewedDocuments}>
                     <Check size={17} />
@@ -389,6 +406,7 @@ export default function Home() {
                   </button>
                 </div>
               </div>
+              <OcrStatusBanner status={ocrStatus} />
               <div className="grid gap-3 xl:grid-cols-2">
                 <OcrNote title="Delivery Note" provider={deliveryDocument?.ocr_data?.ocr_provider} note={deliveryDocument?.ocr_data?.ocr_note} />
                 <OcrNote title="Invoice" provider={invoiceDocument?.ocr_data?.ocr_provider} note={invoiceDocument?.ocr_data?.ocr_note} />
@@ -478,6 +496,21 @@ function FilePicker({ title, file, onChange }: { title: string; file: File | nul
       <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">{ACCEPTED_DOCUMENT_TYPES_LABEL}</span>
       <span className="text-sm text-zinc-600">{file?.name ?? "No file selected"}</span>
     </label>
+  );
+}
+
+function OcrStatusBanner({ status }: { status: OcrStatus | null }) {
+  if (!status) return null;
+  const ready = status.vision_ocr_provider === "openai" && status.openai_api_key_configured;
+  return (
+    <div className={`rounded-lg border p-4 text-sm ${ready ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
+      <div className="font-bold">{ready ? "AI OCR is enabled" : "AI OCR is not enabled"}</div>
+      <div className="mt-1">
+        Provider: <span className="font-mono">{status.vision_ocr_provider}</span> / Model: <span className="font-mono">{status.openai_vision_model}</span> / API key:{" "}
+        {status.openai_api_key_configured ? "configured" : "not configured"}
+        {status.paddle_ocr_lang ? <> / Paddle: <span className="font-mono">{status.paddle_ocr_lang}</span></> : null}
+      </div>
+    </div>
   );
 }
 
@@ -572,9 +605,11 @@ function OcrReviewPanel({ title, value, onChange }: { title: string; value: stri
           <h3 className="text-lg font-bold">{title}</h3>
           <div className="mt-1 text-xs font-semibold text-zinc-500">{document.items.length} line items</div>
         </div>
-        <button className="h-9 rounded-md border border-line bg-white px-3 text-sm font-bold" type="button" onClick={addItem}>
-          Add line
-        </button>
+        {document.items.length > 0 ? (
+          <button className="h-9 rounded-md border border-line bg-white px-3 text-sm font-bold" type="button" onClick={addItem}>
+            Add line
+          </button>
+        ) : null}
       </div>
 
       <div className="grid gap-3 md:grid-cols-3">
@@ -632,7 +667,7 @@ function OcrReviewPanel({ title, value, onChange }: { title: string; value: stri
             {document.items.length === 0 ? (
               <tr className="border-b border-line">
                 <td className="py-4 text-zinc-500" colSpan={6}>
-                  No line items yet. Add lines from the OCR result or manual review.
+                  No line items were extracted. Configure and run AI OCR again before matching.
                 </td>
               </tr>
             ) : null}
@@ -641,9 +676,14 @@ function OcrReviewPanel({ title, value, onChange }: { title: string; value: stri
       </div>
 
       <details>
-        <summary className="cursor-pointer text-sm font-bold text-zinc-600">Raw JSON</summary>
+        <summary className="cursor-pointer text-sm font-bold text-zinc-600">Advanced JSON</summary>
         <div className="mt-3">
           <JsonEditor title={`${title} JSON`} value={value} onChange={onChange} framed={false} />
+          {document.items.length === 0 ? (
+            <button className="mt-3 h-9 rounded-md border border-line bg-white px-3 text-sm font-bold" type="button" onClick={addItem}>
+              Add manual line
+            </button>
+          ) : null}
         </div>
       </details>
     </section>

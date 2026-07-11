@@ -8,6 +8,7 @@
 - Scanned PDF: rendered to PNG pages under `storage/ocr_work`, then routed to `vision_stub:scan_pdf`.
 - Phone photo / image upload: routed to `vision_stub:image`.
 - XLS: accepted for upload, but returns `spreadsheet:xls_unsupported` until a legacy Excel parser is added.
+- Manual line entry is an exception path only. The target workflow is automatic AI OCR extraction followed by review and correction.
 
 ## Why vision OCR is the main path
 
@@ -31,6 +32,7 @@ The current placeholder providers are:
 - `text_pdf`
 - `vision_stub:scan_pdf`
 - `vision_stub:image`
+- `vision_paddle:japan`
 - `spreadsheet:xls_unsupported`
 - `unsupported`
 
@@ -53,6 +55,21 @@ EVIDENT_VISION_OCR_MAX_IMAGES=3
 ```
 
 When `EVIDENT_VISION_OCR_PROVIDER=openai`, scanned PDFs are rendered to images first, then the selected images are sent to the OpenAI Responses API. If no API key is configured, the app keeps returning an OCR review note instead of failing the upload flow.
+
+To enable free local PaddleOCR:
+
+```powershell
+cd backend
+.\.venv\Scripts\python.exe -m pip install -r requirements-paddle.txt
+```
+
+```env
+EVIDENT_VISION_OCR_PROVIDER=paddle
+EVIDENT_PADDLE_OCR_LANG=japan
+EVIDENT_VISION_OCR_MAX_IMAGES=3
+```
+
+PaddleOCR avoids per-page API charges, but it runs on the server and may require more CPU/RAM than the stub or OpenAI provider. It performs text recognition locally, then Evident AI attempts to structure recognized lines into item name, quantity, unit price, amount, and tax rate.
 
 ## Target JSON shape
 
@@ -78,7 +95,8 @@ When `EVIDENT_VISION_OCR_PROVIDER=openai`, scanned PDFs are rendered to images f
 
 ## Next tasks
 
-- Render scanned PDF pages to images before calling vision OCR.
+- Validate PaddleOCR with real scanned PDF / phone photo samples.
+- Configure OpenAI API key as a higher-accuracy provider option.
 - Add confidence fields per document and per line item.
 - Add OCR review UI that is easier than editing raw JSON.
 - Add tests with sample scanned PDF and phone photo fixtures.

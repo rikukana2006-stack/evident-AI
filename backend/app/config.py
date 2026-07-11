@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     openai_vision_model: str = "gpt-4.1-mini"
     vision_ocr_max_images: int = 3
+    paddle_ocr_lang: str = "japan"
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="EVIDENT_")
 

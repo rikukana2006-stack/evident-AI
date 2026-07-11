@@ -63,6 +63,9 @@ def test_api_flow_from_csv_upload_to_csv_export(client: TestClient) -> None:
     )
 
     assert client.get("/health").json() == {"status": "ok"}
+    ocr_status = client.get("/ocr/status")
+    assert ocr_status.status_code == 200
+    assert "openai_api_key_configured" in ocr_status.json()
 
     delivery = upload_csv(client, "delivery_note", "delivery.csv", delivery_csv)
     invoice = upload_csv(client, "invoice", "invoice.csv", invoice_csv)

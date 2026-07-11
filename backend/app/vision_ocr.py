@@ -1,6 +1,7 @@
 import base64
 import json
 import mimetypes
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -66,7 +67,7 @@ def build_empty_vision_document(
     note = (
         f"画像OCR連携は {settings.vision_ocr_provider} です。"
         f"AI OCRへ渡す画像を {image_count} 件準備しました。"
-        "現時点ではOCRレビューで手入力してください。"
+        "自動抽出を行うにはAI OCRプロバイダーを設定してください。"
     )
     if extra_note:
         note = f"{note} {extra_note}"
@@ -119,6 +120,136 @@ def parse_openai_ocr_response(document_type: str, filename: str, response_text: 
     data.setdefault("ocr_note", None)
     data.setdefault("items", [])
     return ExtractedDocument.model_validate(data)
+
+
+def parse_number(value: object, default: int = 0) -> float | int:
+    text = str(value or "").strip()
+    if not text:
+        return default
+    cleaned = re.sub(r"[,%¥円\s]", "", text)
+    try:
+        number = float(cleaned)
+    except ValueError:
+        return default
+    return int(number) if number.is_integer() else number
+
+
+def parse_ocr_text_rows(text: str) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        parts = re.split(r"\s+", line)
+        if len(parts) < 4:
+            continue
+
+        numeric_values: list[str] = []
+        while parts and len(numeric_values) < 4 and parse_number(parts[-1], default=-1) != -1:
+            numeric_values.insert(0, parts.pop())
+
+        if len(numeric_values) < 3 or not parts:
+            continue
+
+        if len(numeric_values) == 4:
+            quantity, unit_price, amount, tax_rate = numeric_values
+        else:
+            quantity, unit_price, amount = numeric_values[-3:]
+            tax_rate = "10"
+        rows.append(
+            {
+                "item_name": " ".join(parts),
+                "quantity": parse_number(quantity),
+                "unit_price": parse_number(unit_price),
+                "amount": parse_number(amount),
+                "tax_rate": parse_number(tax_rate, default=10),
+            }
+        )
+    return rows
+
+
+def build_document_from_rows(
+    document_type: str,
+    filename: str,
+    rows: list[dict[str, object]],
+    provider: str,
+    note: str | None = None,
+) -> ExtractedDocument:
+    return ExtractedDocument.model_validate(
+        {
+            "document_type": document_type,
+            "vendor_name": "",
+            "document_date": "",
+            "document_number": Path(filename).stem,
+            "ocr_note": note,
+            "ocr_provider": provider,
+            "items": rows,
+        }
+    )
+
+
+def flatten_paddle_result(result: object) -> list[str]:
+    texts: list[str] = []
+
+    def walk(value: object) -> None:
+        if isinstance(value, dict):
+            for key in ("text", "rec_text", "transcription"):
+                text = value.get(key)
+                if isinstance(text, str):
+                    texts.append(text)
+            for nested in value.values():
+                walk(nested)
+        elif isinstance(value, (list, tuple)):
+            if len(value) >= 2 and isinstance(value[1], (list, tuple)) and value[1] and isinstance(value[1][0], str):
+                texts.append(value[1][0])
+            else:
+                for nested in value:
+                    walk(nested)
+
+    walk(result)
+    return texts
+
+
+def run_paddle_vision_ocr(
+    document_type: str,
+    filename: str,
+    source_kind: str,
+    image_paths: list[Path],
+) -> ExtractedDocument:
+    try:
+        from paddleocr import PaddleOCR
+    except ImportError:
+        return build_empty_vision_document(
+            document_type,
+            filename,
+            source_kind,
+            image_paths,
+            "PaddleOCRが未インストールです。無料OCRを使うには backend で pip install -r requirements-paddle.txt を実行してください。",
+        )
+
+    selected_images = image_paths[: settings.vision_ocr_max_images]
+    try:
+        ocr = PaddleOCR(lang=settings.paddle_ocr_lang)
+        text_lines: list[str] = []
+        for image_path in selected_images:
+            if hasattr(ocr, "ocr"):
+                result = ocr.ocr(str(image_path))
+            else:
+                result = ocr.predict(str(image_path))
+            text_lines.extend(flatten_paddle_result(result))
+    except Exception as exc:
+        return build_empty_vision_document(
+            document_type,
+            filename,
+            source_kind,
+            image_paths,
+            f"PaddleOCRの実行に失敗しました: {exc}",
+        )
+
+    text = "\n".join(text_lines)
+    rows = parse_ocr_text_rows(text)
+    note = None if rows else "PaddleOCRで文字は読み取りましたが、明細行に構造化できませんでした。"
+    return build_document_from_rows(document_type, filename, rows, f"vision_paddle:{settings.paddle_ocr_lang}", note)
 
 
 def run_openai_vision_ocr(
@@ -199,9 +330,15 @@ def run_vision_ocr(document_type: str, filename: str, storage_path: str, source_
             if note:
                 return build_empty_vision_document(document_type, filename, source_kind, image_paths, note)
             return run_openai_vision_ocr(document_type, filename, source_kind, image_paths)
+        if settings.vision_ocr_provider == "paddle":
+            if note:
+                return build_empty_vision_document(document_type, filename, source_kind, image_paths, note)
+            return run_paddle_vision_ocr(document_type, filename, source_kind, image_paths)
         return build_empty_vision_document(document_type, filename, source_kind, image_paths, note)
 
     image_paths = [Path(storage_path)]
     if settings.vision_ocr_provider == "openai":
         return run_openai_vision_ocr(document_type, filename, source_kind, image_paths)
+    if settings.vision_ocr_provider == "paddle":
+        return run_paddle_vision_ocr(document_type, filename, source_kind, image_paths)
     return build_empty_vision_document(document_type, filename, source_kind, image_paths)

@@ -5,7 +5,7 @@ from xml.sax.saxutils import escape
 
 from app.file_types import is_allowed_upload
 from app.ocr_service import parse_pdf_document, parse_pdf_text_rows, parse_csv_document, parse_xlsx_document, run_ocr
-from app.vision_ocr import parse_openai_ocr_response
+from app.vision_ocr import parse_ocr_text_rows, parse_openai_ocr_response
 
 
 def make_xlsx(rows: list[list[object]]) -> bytes:
@@ -211,3 +211,27 @@ def test_parse_openai_ocr_response_handles_invalid_json() -> None:
     assert document.ocr_provider == "vision_stub:openai_parse_error"
     assert document.ocr_note is not None
     assert document.items == []
+
+
+def test_parse_ocr_text_rows_from_paddle_text_lines() -> None:
+    rows = parse_ocr_text_rows(
+        "\u660e\u6cbb\u304a\u3044\u3057\u3044\u725b\u4e73 20 100 2000 8\n"
+        "\u30d1\u30f3 30 80 2400 8"
+    )
+
+    assert rows == [
+        {
+            "item_name": "\u660e\u6cbb\u304a\u3044\u3057\u3044\u725b\u4e73",
+            "quantity": 20,
+            "unit_price": 100,
+            "amount": 2000,
+            "tax_rate": 8,
+        },
+        {
+            "item_name": "\u30d1\u30f3",
+            "quantity": 30,
+            "unit_price": 80,
+            "amount": 2400,
+            "tax_rate": 8,
+        },
+    ]

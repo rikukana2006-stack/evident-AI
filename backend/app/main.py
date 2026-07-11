@@ -85,6 +85,17 @@ def accepted_file_types() -> dict[str, str]:
     return {"accepted_file_types": ALLOWED_FILE_TYPES_LABEL}
 
 
+@app.get("/ocr/status")
+def ocr_status() -> dict[str, str | bool | int]:
+    return {
+        "vision_ocr_provider": settings.vision_ocr_provider,
+        "openai_api_key_configured": bool(settings.openai_api_key),
+        "openai_vision_model": settings.openai_vision_model,
+        "vision_ocr_max_images": settings.vision_ocr_max_images,
+        "paddle_ocr_lang": settings.paddle_ocr_lang,
+    }
+
+
 @app.get("/documents/{document_id}/file")
 def get_document_file(document_id: str, db: Session = Depends(get_db)) -> FileResponse:
     document = get_document_or_404(db, document_id)
