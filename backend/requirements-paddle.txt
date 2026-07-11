@@ -2,4 +2,4 @@
 # Install only when you want to run free local OCR:
 #   .\.venv\Scripts\python.exe -m pip install -r requirements-paddle.txt
 paddleocr==3.3.2
-paddlepaddle==3.3.1
+paddlepaddle==3.2.2

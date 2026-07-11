@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 import httpx
@@ -43,9 +44,14 @@ Rules:
 
 
 def configure_paddle_cache() -> None:
-    # PaddleOCR creates model and temp caches on import/startup. Keep them inside
-    # the project so Windows user-profile permissions do not block local OCR.
-    cache_root = (settings.ocr_work_dir / "paddle_cache").resolve()
+    # Paddle's native inference layer can fail on Windows when model paths contain
+    # non-ASCII characters. Use an ASCII temp path by default, while still allowing
+    # deployments to pin the cache with EVIDENT_PADDLE_CACHE_DIR.
+    cache_root = (
+        settings.paddle_cache_dir
+        if settings.paddle_cache_dir is not None
+        else Path(tempfile.gettempdir()) / "evident_ai_paddle_cache"
+    ).resolve()
     cache_root.mkdir(parents=True, exist_ok=True)
     paddle_profile = cache_root / "userprofile"
     paddle_profile.mkdir(parents=True, exist_ok=True)
@@ -54,6 +60,7 @@ def configure_paddle_cache() -> None:
     os.environ.setdefault("PADDLE_PDX_CACHE_HOME", str(cache_root / "paddlex"))
     os.environ.setdefault("PADDLE_HOME", str(cache_root / "paddle"))
     os.environ.setdefault("XDG_CACHE_HOME", str(cache_root / "xdg"))
+    os.environ.setdefault("DISABLE_MODEL_SOURCE_CHECK", "True")
 
 
 def find_pdftoppm_executable() -> str | None:
@@ -203,11 +210,123 @@ def build_document_from_rows(
     )
 
 
+def build_paddle_no_rows_note(text_lines: list[str]) -> str:
+    preview = "\n".join(text_lines[:80])
+    return (
+        "PaddleOCRで文字は読み取りましたが、明細行に構造化できませんでした。"
+        f"\n\n--- OCR text preview ---\n{preview}"
+    )
+
+
+def parse_paddle_token_rows(text_lines: list[str]) -> list[dict[str, object]]:
+    product_candidates: list[str] = []
+    amount_candidates: list[int] = []
+    quantity = 1
+    tax_rate = 10
+    excluded_patterns = (
+        "TEL",
+        "No",
+        "コード",
+        "合計",
+        "消費税",
+        "税",
+        "銀行",
+        "支店",
+        "営業",
+        "会社",
+        "本社",
+        "当座",
+        "前回",
+        "今回",
+        "請求",
+        "納品",
+        "毎度",
+        "下記",
+        "お問",
+        "日付",
+        "伝票",
+        "商品",
+        "差引",
+    )
+
+    for line in text_lines:
+        text = str(line).strip()
+        if not text:
+            continue
+        if re.fullmatch(r"\d+\s*[x×X]", text):
+            quantity = parse_number(re.sub(r"\D", "", text), default=1)
+        if "税" in text and re.search(r"10", text):
+            tax_rate = 10
+
+        number = parse_paddle_number(text)
+        if number >= 100 and ("," in text or "，" in text):
+            amount_candidates.append(number)
+
+        has_japanese = re.search(r"[ぁ-んァ-ン一-龥]", text) is not None
+        has_excluded = any(pattern in text for pattern in excluded_patterns)
+        is_numeric_like = re.fullmatch(r"[\d\s,，.．円¥￥-]+", text) is not None
+        if has_japanese and not has_excluded and not is_numeric_like and 3 <= len(text) <= 30:
+            product_candidates.append(text)
+
+    if not product_candidates or not amount_candidates:
+        return []
+
+    amount = select_likely_amount(amount_candidates)
+    item_name = select_likely_item_name(product_candidates)
+    return [
+        {
+            "item_name": item_name,
+            "quantity": quantity,
+            "unit_price": amount,
+            "amount": amount,
+            "tax_rate": tax_rate,
+        }
+    ]
+
+
+def parse_paddle_number(text: str) -> int:
+    normalized = text.replace("，", ",").replace("．", ".").strip()
+    decimal_match = re.fullmatch(r"(\d{1,3}(?:,\d{3})+),00", normalized)
+    if decimal_match:
+        normalized = decimal_match.group(1)
+    digits = re.sub(r"\D", "", normalized)
+    if not digits:
+        return 0
+    try:
+        return int(digits)
+    except ValueError:
+        return 0
+
+
+def select_likely_amount(numbers: list[int]) -> int:
+    counts: dict[int, int] = {}
+    for number in numbers:
+        if number < 100 or number > 10_000_000:
+            continue
+        counts[number] = counts.get(number, 0) + 1
+    if not counts:
+        return numbers[0]
+    return sorted(counts.items(), key=lambda item: (item[1], item[0]), reverse=True)[0][0]
+
+
+def select_likely_item_name(candidates: list[str]) -> str:
+    preferred = [text for text in candidates if "用" in text]
+    if not preferred:
+        preferred = [text for text in candidates if any(keyword in text for keyword in ("剤", "料"))]
+    if not preferred:
+        preferred = [text for text in candidates if "品" in text]
+    pool = preferred or candidates
+    return sorted(pool, key=len, reverse=True)[0]
+
+
 def flatten_paddle_result(result: object) -> list[str]:
     texts: list[str] = []
 
     def walk(value: object) -> None:
         if isinstance(value, dict):
+            rec_texts = value.get("rec_texts")
+            if isinstance(rec_texts, list):
+                texts.extend(str(text) for text in rec_texts if text)
             for key in ("text", "rec_text", "transcription"):
                 text = value.get(key)
                 if isinstance(text, str):
@@ -245,7 +364,13 @@ def run_paddle_vision_ocr(
 
     selected_images = image_paths[: settings.vision_ocr_max_images]
     try:
-        ocr = PaddleOCR(lang=settings.paddle_ocr_lang)
+        ocr = PaddleOCR(
+            lang=settings.paddle_ocr_lang,
+            ocr_version=settings.paddle_ocr_version,
+            use_doc_orientation_classify=False,
+            use_doc_unwarping=False,
+            use_textline_orientation=False,
+        )
         text_lines: list[str] = []
         for image_path in selected_images:
             if hasattr(ocr, "ocr"):
@@ -264,8 +389,21 @@ def run_paddle_vision_ocr(
 
     text = "\n".join(text_lines)
     rows = parse_ocr_text_rows(text)
+    if not rows:
+        rows = parse_paddle_token_rows(text_lines)
     note = None if rows else "PaddleOCRで文字は読み取りましたが、明細行に構造化できませんでした。"
-    return build_document_from_rows(document_type, filename, rows, f"vision_paddle:{settings.paddle_ocr_lang}", note)
+    if rows:
+        preview = "\n".join(text_lines[:40])
+        note = f"PaddleOCRの文字認識結果から明細を推定しました。必要に応じて確認してください。\n\n--- OCR text preview ---\n{preview}"
+    else:
+        note = build_paddle_no_rows_note(text_lines)
+    return build_document_from_rows(
+        document_type,
+        filename,
+        rows,
+        f"vision_paddle:{settings.paddle_ocr_lang}:{settings.paddle_ocr_version}",
+        note,
+    )
 
 
 def run_openai_vision_ocr(

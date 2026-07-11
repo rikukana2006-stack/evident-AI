@@ -65,6 +65,8 @@ type OcrStatus = {
   openai_vision_model: string;
   vision_ocr_max_images: number;
   paddle_ocr_lang?: string;
+  paddle_ocr_version?: string;
+  paddle_cache_dir?: string;
 };
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
@@ -501,14 +503,18 @@ function FilePicker({ title, file, onChange }: { title: string; file: File | nul
 
 function OcrStatusBanner({ status }: { status: OcrStatus | null }) {
   if (!status) return null;
-  const ready = status.vision_ocr_provider === "openai" && status.openai_api_key_configured;
+  const ready = status.vision_ocr_provider === "paddle" || (status.vision_ocr_provider === "openai" && status.openai_api_key_configured);
+  const model =
+    status.vision_ocr_provider === "paddle"
+      ? `${status.paddle_ocr_lang ?? "unknown"} ${status.paddle_ocr_version ?? ""}`.trim()
+      : status.openai_vision_model;
   return (
     <div className={`rounded-lg border p-4 text-sm ${ready ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
       <div className="font-bold">{ready ? "AI OCR is enabled" : "AI OCR is not enabled"}</div>
       <div className="mt-1">
-        Provider: <span className="font-mono">{status.vision_ocr_provider}</span> / Model: <span className="font-mono">{status.openai_vision_model}</span> / API key:{" "}
+        Provider: <span className="font-mono">{status.vision_ocr_provider}</span> / Model: <span className="font-mono">{model}</span> / API key:{" "}
         {status.openai_api_key_configured ? "configured" : "not configured"}
-        {status.paddle_ocr_lang ? <> / Paddle: <span className="font-mono">{status.paddle_ocr_lang}</span></> : null}
+        {status.paddle_cache_dir ? <> / Cache: <span className="font-mono">{status.paddle_cache_dir}</span></> : null}
       </div>
     </div>
   );
@@ -706,7 +712,7 @@ function OcrNote({ title, provider, note }: { title: string; provider?: string |
     <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
       <div className="font-bold">{title}</div>
       {provider ? <div className="mt-1 font-mono text-xs">{provider}</div> : null}
-      {note ? <div className="mt-1">{note}</div> : null}
+      {note ? <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap rounded-md bg-white/70 p-3 font-sans text-xs leading-relaxed">{note}</pre> : null}
     </div>
   );
 }

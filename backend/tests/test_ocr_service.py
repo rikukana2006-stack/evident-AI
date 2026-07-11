@@ -8,7 +8,7 @@ import pytest
 from app.config import settings
 from app.file_types import is_allowed_upload
 from app.ocr_service import parse_pdf_document, parse_pdf_text_rows, parse_csv_document, parse_xlsx_document, run_ocr
-from app.vision_ocr import parse_ocr_text_rows, parse_openai_ocr_response
+from app.vision_ocr import parse_ocr_text_rows, parse_openai_ocr_response, parse_paddle_token_rows
 
 
 @pytest.fixture(autouse=True)
@@ -245,4 +245,29 @@ def test_parse_ocr_text_rows_from_paddle_text_lines() -> None:
             "amount": 2400,
             "tax_rate": 8,
         },
+    ]
+
+
+def test_parse_paddle_token_rows_estimates_line_from_ocr_cells() -> None:
+    rows = parse_paddle_token_rows(
+        [
+            "\u5546\u54c1\u30b3\u30fc\u30c9",
+            "\u54c1\u540d\u30fb\u898f\u683c",
+            "\u75c5\u9662\u7528\u30cf\u30a4\u30bf\u30fc5k8",
+            "1\u00d7",
+            "3,360,00",
+            "3,360",
+            "\u6d88\u8cbb\u7a0e10\uff05",
+            "336",
+        ]
+    )
+
+    assert rows == [
+        {
+            "item_name": "\u75c5\u9662\u7528\u30cf\u30a4\u30bf\u30fc5k8",
+            "quantity": 1,
+            "unit_price": 3360,
+            "amount": 3360,
+            "tax_rate": 10,
+        }
     ]

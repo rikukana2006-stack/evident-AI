@@ -93,6 +93,8 @@ def ocr_status() -> dict[str, str | bool | int]:
         "openai_vision_model": settings.openai_vision_model,
         "vision_ocr_max_images": settings.vision_ocr_max_images,
         "paddle_ocr_lang": settings.paddle_ocr_lang,
+        "paddle_ocr_version": settings.paddle_ocr_version,
+        "paddle_cache_dir": str(settings.paddle_cache_dir) if settings.paddle_cache_dir else "",
     }
 
 

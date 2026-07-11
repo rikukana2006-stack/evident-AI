@@ -5,8 +5,8 @@
 - CSV: parsed as structured line item data.
 - XLSX: parsed as structured line item data, including invoice-like templates where the table starts below a title area.
 - Text PDF: text is extracted first, then simple table-like lines are parsed.
-- Scanned PDF: rendered to PNG pages under `storage/ocr_work`, then routed to `vision_stub:scan_pdf`.
-- Phone photo / image upload: routed to `vision_stub:image`.
+- Scanned PDF: rendered to PNG pages under `storage/ocr_work`, then routed to the configured vision provider.
+- Phone photo / image upload: routed to the configured vision provider.
 - XLS: accepted for upload, but returns `spreadsheet:xls_unsupported` until a legacy Excel parser is added.
 - Manual line entry is an exception path only. The target workflow is automatic AI OCR extraction followed by review and correction.
 
@@ -32,7 +32,7 @@ The current placeholder providers are:
 - `text_pdf`
 - `vision_stub:scan_pdf`
 - `vision_stub:image`
-- `vision_paddle:japan`
+- `vision_paddle:japan:PP-OCRv3`
 - `spreadsheet:xls_unsupported`
 - `unsupported`
 
@@ -66,10 +66,17 @@ cd backend
 ```env
 EVIDENT_VISION_OCR_PROVIDER=paddle
 EVIDENT_PADDLE_OCR_LANG=japan
+EVIDENT_PADDLE_OCR_VERSION=PP-OCRv3
 EVIDENT_VISION_OCR_MAX_IMAGES=3
 ```
 
 PaddleOCR avoids per-page API charges, but it runs on the server and may require more CPU/RAM than the stub or OpenAI provider. It performs text recognition locally, then Evident AI attempts to structure recognized lines into item name, quantity, unit price, amount, and tax rate.
+
+On Windows, Paddle's native inference layer can fail when model cache paths contain Japanese or other non-ASCII characters. By default, Evident AI stores PaddleOCR models under the Windows temp folder. If you need a fixed cache location, set an ASCII-only path:
+
+```env
+EVIDENT_PADDLE_CACHE_DIR=C:\Users\YOUR_NAME\AppData\Local\Temp\evident_ai_paddle_cache
+```
 
 ## Target JSON shape
 
