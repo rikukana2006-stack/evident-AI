@@ -3,9 +3,20 @@ import zipfile
 from pathlib import Path
 from xml.sax.saxutils import escape
 
+import pytest
+
+from app.config import settings
 from app.file_types import is_allowed_upload
 from app.ocr_service import parse_pdf_document, parse_pdf_text_rows, parse_csv_document, parse_xlsx_document, run_ocr
 from app.vision_ocr import parse_ocr_text_rows, parse_openai_ocr_response
+
+
+@pytest.fixture(autouse=True)
+def use_stub_ocr_provider_for_unit_tests() -> None:
+    original_provider = settings.vision_ocr_provider
+    settings.vision_ocr_provider = "stub"
+    yield
+    settings.vision_ocr_provider = original_provider
 
 
 def make_xlsx(rows: list[list[object]]) -> bytes:

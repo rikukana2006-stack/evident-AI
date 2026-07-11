@@ -1,6 +1,7 @@
 import base64
 import json
 import mimetypes
+import os
 import re
 import shutil
 import subprocess
@@ -39,6 +40,20 @@ Rules:
 - Use tax_rate 10 when the tax rate is not printed.
 - Do not include markdown fences.
 """.strip()
+
+
+def configure_paddle_cache() -> None:
+    # PaddleOCR creates model and temp caches on import/startup. Keep them inside
+    # the project so Windows user-profile permissions do not block local OCR.
+    cache_root = (settings.ocr_work_dir / "paddle_cache").resolve()
+    cache_root.mkdir(parents=True, exist_ok=True)
+    paddle_profile = cache_root / "userprofile"
+    paddle_profile.mkdir(parents=True, exist_ok=True)
+    os.environ["USERPROFILE"] = str(paddle_profile)
+    os.environ["HOME"] = str(paddle_profile)
+    os.environ.setdefault("PADDLE_PDX_CACHE_HOME", str(cache_root / "paddlex"))
+    os.environ.setdefault("PADDLE_HOME", str(cache_root / "paddle"))
+    os.environ.setdefault("XDG_CACHE_HOME", str(cache_root / "xdg"))
 
 
 def find_pdftoppm_executable() -> str | None:
@@ -216,6 +231,7 @@ def run_paddle_vision_ocr(
     source_kind: str,
     image_paths: list[Path],
 ) -> ExtractedDocument:
+    configure_paddle_cache()
     try:
         from paddleocr import PaddleOCR
     except ImportError:
