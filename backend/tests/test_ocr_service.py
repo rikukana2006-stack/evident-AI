@@ -8,7 +8,14 @@ import pytest
 from app.config import settings
 from app.file_types import is_allowed_upload
 from app.ocr_service import parse_pdf_document, parse_pdf_text_rows, parse_csv_document, parse_xlsx_document, run_ocr
-from app.vision_ocr import parse_ocr_text_rows, parse_openai_ocr_response, parse_paddle_token_rows, prepare_paddle_input_images
+from app.vision_ocr import (
+    parse_ocr_text_rows,
+    extract_paddle_cells,
+    parse_openai_ocr_response,
+    parse_paddle_position_rows,
+    parse_paddle_token_rows,
+    prepare_paddle_input_images,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -271,6 +278,48 @@ def test_parse_paddle_token_rows_estimates_line_from_ocr_cells() -> None:
             "tax_rate": 10,
         }
     ]
+
+
+def test_parse_paddle_position_rows_uses_table_columns() -> None:
+    cells = [
+        {"text": "\u5546\u54c1\u30b3\u30fc\u30c9", "x1": 58, "y1": 535, "x2": 207, "y2": 563, "cx": 132.5, "cy": 549},
+        {"text": "\u54c1", "x1": 270, "y1": 532, "x2": 307, "y2": 568, "cx": 288.5, "cy": 550},
+        {"text": "\u540d\u30fb\u898f", "x1": 376, "y1": 534, "x2": 539, "y2": 565, "cx": 457.5, "cy": 549.5},
+        {"text": "\u5165\u6570", "x1": 919, "y1": 534, "x2": 1016, "y2": 563, "cx": 967.5, "cy": 548.5},
+        {"text": "\u7dcf\u6570\u91cf", "x1": 1041, "y1": 534, "x2": 1197, "y2": 562, "cx": 1119, "cy": 548},
+        {"text": "\u5358\u4fa1", "x1": 1264, "y1": 532, "x2": 1356, "y2": 564, "cx": 1310, "cy": 548},
+        {"text": "\u91d1\u984d", "x1": 1449, "y1": 530, "x2": 1544, "y2": 563, "cx": 1496.5, "cy": 546.5},
+        {"text": "1\u00d7", "x1": 862, "y1": 583, "x2": 898, "y2": 612, "cx": 880, "cy": 597.5},
+        {"text": "190812", "x1": 49, "y1": 618, "x2": 133, "y2": 646, "cx": 91, "cy": 632},
+        {"text": "\u75c5\u9662\u7528\u30cf\u30a4\u30bf\u30fc5k8", "x1": 232, "y1": 618, "x2": 430, "y2": 647, "cx": 331, "cy": 632.5},
+        {"text": "3,360,00", "x1": 1282, "y1": 616, "x2": 1396, "y2": 641, "cx": 1339, "cy": 628.5},
+        {"text": "3,360", "x1": 1520, "y1": 615, "x2": 1593, "y2": 640, "cx": 1556.5, "cy": 627.5},
+        {"text": "\u30b7\u30e7\u30a6\u30d2\u30bc\u30a410\uff05", "x1": 233, "y1": 683, "x2": 385, "y2": 710, "cx": 309, "cy": 696.5},
+        {"text": "336", "x1": 1549, "y1": 679, "x2": 1594, "y2": 706, "cx": 1571.5, "cy": 692.5},
+    ]
+
+    assert parse_paddle_position_rows(cells) == [
+        {
+            "item_name": "\u75c5\u9662\u7528\u30cf\u30a4\u30bf\u30fc5k8",
+            "quantity": 1,
+            "unit_price": 3360,
+            "amount": 3360,
+            "tax_rate": 10,
+        }
+    ]
+
+
+def test_extract_paddle_cells_handles_box_arrays_without_boolean_checks() -> None:
+    class BoxArray:
+        def __init__(self, values: list[list[int]]) -> None:
+            self.values = values
+
+        def tolist(self) -> list[list[int]]:
+            return self.values
+
+    cells = extract_paddle_cells({"rec_texts": ["A"], "rec_boxes": BoxArray([[1, 2, 3, 4]])})
+
+    assert cells == [{"text": "A", "x1": 1.0, "y1": 2.0, "x2": 3.0, "y2": 4.0, "cx": 2.0, "cy": 3.0}]
 
 
 def test_prepare_paddle_input_images_uses_ascii_paths(tmp_path: Path) -> None:

@@ -329,6 +329,151 @@ def parse_paddle_token_rows(text_lines: list[str]) -> list[dict[str, object]]:
     ]
 
 
+def extract_paddle_cells(result: object) -> list[dict[str, object]]:
+    cells: list[dict[str, object]] = []
+
+    def to_box(value: object) -> list[float] | None:
+        if hasattr(value, "tolist"):
+            value = value.tolist()
+        if not isinstance(value, list):
+            return None
+        if len(value) == 4 and all(isinstance(point, int | float) for point in value):
+            return [float(point) for point in value]
+        if len(value) == 4 and all(isinstance(point, list | tuple) and len(point) >= 2 for point in value):
+            xs = [float(point[0]) for point in value]
+            ys = [float(point[1]) for point in value]
+            return [min(xs), min(ys), max(xs), max(ys)]
+        return None
+
+    def walk(value: object) -> None:
+        if isinstance(value, dict):
+            texts = value.get("rec_texts")
+            boxes = value.get("rec_boxes")
+            if boxes is None:
+                boxes = value.get("rec_polys")
+            if boxes is None:
+                boxes = value.get("dt_polys")
+            if isinstance(texts, list) and boxes is not None:
+                if hasattr(boxes, "tolist"):
+                    boxes = boxes.tolist()
+                if isinstance(boxes, list):
+                    for text, box_value in zip(texts, boxes):
+                        text_value = str(text).strip()
+                        box = to_box(box_value)
+                        if text_value and box:
+                            cells.append(
+                                {
+                                    "text": text_value,
+                                    "x1": box[0],
+                                    "y1": box[1],
+                                    "x2": box[2],
+                                    "y2": box[3],
+                                    "cx": (box[0] + box[2]) / 2,
+                                    "cy": (box[1] + box[3]) / 2,
+                                }
+                            )
+            for nested in value.values():
+                walk(nested)
+        elif isinstance(value, (list, tuple)):
+            for nested in value:
+                walk(nested)
+
+    walk(result)
+    return cells
+
+
+def parse_paddle_position_rows(cells: list[dict[str, object]]) -> list[dict[str, object]]:
+    if not cells:
+        return []
+
+    rows = group_cells_by_y(cells)
+    header_row = find_paddle_table_header_row(rows)
+    if header_row is None:
+        return []
+
+    header_y = max(float(cell["cy"]) for cell in header_row)
+    parsed_rows: list[dict[str, object]] = []
+    for row in rows:
+        row_y = sum(float(cell["cy"]) for cell in row) / len(row)
+        if row_y <= header_y + 25 or row_y > header_y + 450:
+            continue
+
+        parsed = parse_paddle_position_row(row)
+        if parsed:
+            parsed_rows.append(parsed)
+
+    return parsed_rows
+
+
+def group_cells_by_y(cells: list[dict[str, object]], tolerance: float = 48) -> list[list[dict[str, object]]]:
+    rows: list[list[dict[str, object]]] = []
+    for cell in sorted(cells, key=lambda item: (float(item["cy"]), float(item["cx"]))):
+        for row in rows:
+            row_y = sum(float(existing["cy"]) for existing in row) / len(row)
+            if abs(float(cell["cy"]) - row_y) <= tolerance:
+                row.append(cell)
+                break
+        else:
+            rows.append([cell])
+
+    return [sorted(row, key=lambda item: float(item["cx"])) for row in rows]
+
+
+def find_paddle_table_header_row(rows: list[list[dict[str, object]]]) -> list[dict[str, object]] | None:
+    for row in rows:
+        text = "".join(str(cell["text"]) for cell in row)
+        score = 0
+        for keyword in ("品", "名", "数量", "単価", "金額"):
+            if keyword in text:
+                score += 1
+        if score >= 3:
+            return row
+    return None
+
+
+def parse_paddle_position_row(row: list[dict[str, object]]) -> dict[str, object] | None:
+    item_parts: list[str] = []
+    quantity = 1
+    unit_price = 0
+    amount = 0
+
+    for cell in row:
+        text = str(cell["text"]).strip()
+        x1 = float(cell["x1"])
+        cx = float(cell["cx"])
+
+        if 190 <= x1 <= 850 and is_likely_item_text(text):
+            item_parts.append(text)
+        elif 820 <= cx <= 1210 and re.fullmatch(r"\d+\s*[x×X]?", text):
+            quantity = parse_number(re.sub(r"\D", "", text), default=1)
+        elif 1180 <= cx <= 1425:
+            unit_price = parse_paddle_number(text)
+        elif cx >= 1425:
+            amount = parse_paddle_number(text)
+
+    item_name = " ".join(item_parts).strip()
+    if not item_name or amount <= 0:
+        return None
+    if unit_price <= 0:
+        unit_price = amount
+
+    return {
+        "item_name": item_name,
+        "quantity": quantity,
+        "unit_price": unit_price,
+        "amount": amount,
+        "tax_rate": 10,
+    }
+
+
+def is_likely_item_text(text: str) -> bool:
+    if not re.search(r"[ぁ-んァ-ン一-龥]", text):
+        return False
+    if any(keyword in text for keyword in ("消費税", "ショウヒ", "ゼイ", "合計", "備考", "コード", "TEL", "問合")):
+        return False
+    return len(text) >= 3
+
+
 def parse_paddle_number(text: str) -> int:
     normalized = text.replace("，", ",").replace("．", ".").strip()
     decimal_match = re.fullmatch(r"(\d{1,3}(?:,\d{3})+),00", normalized)
@@ -411,11 +556,13 @@ def run_paddle_vision_ocr(
     try:
         selected_images = prepare_paddle_input_images(selected_images, cache_root)
         text_lines: list[str] = []
+        paddle_results: list[object] = []
         for image_path in selected_images:
             if hasattr(ocr, "ocr"):
                 result = ocr.ocr(str(image_path))
             else:
                 result = ocr.predict(str(image_path))
+            paddle_results.append(result)
             text_lines.extend(flatten_paddle_result(result))
     except Exception as exc:
         return build_empty_vision_document(
@@ -427,7 +574,10 @@ def run_paddle_vision_ocr(
         )
 
     text = "\n".join(text_lines)
-    rows = parse_ocr_text_rows(text)
+    cells = extract_paddle_cells(paddle_results)
+    rows = parse_paddle_position_rows(cells)
+    if not rows:
+        rows = parse_ocr_text_rows(text)
     if not rows:
         rows = parse_paddle_token_rows(text_lines)
     note = None if rows else "PaddleOCRで文字は読み取りましたが、明細行に構造化できませんでした。"
