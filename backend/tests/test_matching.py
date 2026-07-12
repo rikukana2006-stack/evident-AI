@@ -18,6 +18,7 @@ def test_demo_matching_flags_expected_differences() -> None:
         "name_check_required": 1,
         "missing_invoice_item": 0,
         "missing_delivery_item": 0,
+        "tax_adjusted_match": 0,
     }
 
     milk, bread = result.line_comparisons
@@ -76,4 +77,43 @@ def test_matching_accepts_tax_exclusive_delivery_against_tax_inclusive_invoice()
 
     assert result.status == "matched"
     assert result.summary["matched"] == 1
-    assert result.line_comparisons[0].differences == []
+    assert result.summary["tax_adjusted_match"] == 2
+    assert [(diff.field, diff.status) for diff in result.line_comparisons[0].differences] == [
+        ("unit_price", "tax_adjusted_match"),
+        ("amount", "tax_adjusted_match"),
+    ]
+
+
+def test_matching_flags_invoice_items_without_delivery_note() -> None:
+    delivery = ExtractedDocument.model_validate(
+        {
+            "document_type": "delivery_note",
+            "vendor_name": "Supplier",
+            "document_date": "2026-07-10",
+            "document_number": "DN-100",
+            "items": [],
+        }
+    )
+    invoice = ExtractedDocument.model_validate(
+        {
+            "document_type": "invoice",
+            "vendor_name": "Supplier",
+            "document_date": "2026-07-31",
+            "document_number": "INV-100",
+            "items": [
+                {
+                    "item_name": "未納品請求品",
+                    "quantity": 1,
+                    "unit_price": 5000,
+                    "amount": 5000,
+                    "tax_rate": 10,
+                }
+            ],
+        }
+    )
+
+    result = compare_documents("delivery-id", "invoice-id", delivery, invoice)
+
+    assert result.status == "review_required"
+    assert result.summary["missing_delivery_item"] == 1
+    assert result.line_comparisons[0].status == "missing_delivery_item"

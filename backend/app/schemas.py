@@ -46,7 +46,7 @@ class FieldDifference(BaseModel):
     field: str
     delivery_value: str | None
     invoice_value: str | None
-    status: Literal["matched", "different", "name_check_required"]
+    status: Literal["matched", "different", "name_check_required", "tax_adjusted_match"]
 
 
 class LineComparison(BaseModel):

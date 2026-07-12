@@ -32,9 +32,9 @@ def numeric_values_match(left: object, right: object, tolerance: Decimal = Decim
     return abs(Decimal(str(left)) - Decimal(str(right))) <= tolerance
 
 
-def price_values_match(delivery_value: object, invoice_value: object, tax_rate: object) -> bool:
+def price_match_status(delivery_value: object, invoice_value: object, tax_rate: object) -> str:
     if numeric_values_match(delivery_value, invoice_value, Decimal("0")):
-        return True
+        return "matched"
 
     delivery_amount = Decimal(str(delivery_value))
     invoice_amount = Decimal(str(invoice_value))
@@ -45,10 +45,12 @@ def price_values_match(delivery_value: object, invoice_value: object, tax_rate: 
     # business differences instead of display-format differences.
     delivery_as_tax_included = round_yen(delivery_amount * multiplier)
     invoice_as_tax_included = round_yen(invoice_amount * multiplier)
-    return numeric_values_match(delivery_as_tax_included, invoice_amount) or numeric_values_match(
+    if numeric_values_match(delivery_as_tax_included, invoice_amount) or numeric_values_match(
         invoice_as_tax_included,
         delivery_amount,
-    )
+    ):
+        return "tax_adjusted_match"
+    return "different"
 
 
 def compare_documents(
@@ -116,23 +118,23 @@ def compare_documents(
             delivery_value = getattr(delivery_item, field)
             invoice_value = getattr(invoice_item, field)
             if field in {"unit_price", "amount"}:
-                field_matches = price_values_match(delivery_value, invoice_value, delivery_item.tax_rate)
+                field_status = price_match_status(delivery_value, invoice_value, delivery_item.tax_rate)
             else:
-                field_matches = values_match(delivery_value, invoice_value)
+                field_status = "matched" if values_match(delivery_value, invoice_value) else "different"
 
-            if not field_matches:
+            if field_status != "matched":
                 differences.append(
                     FieldDifference(
                         field=field,
                         delivery_value=str(delivery_value),
                         invoice_value=str(invoice_value),
-                        status="different",
+                        status=field_status,
                     )
                 )
 
         if any(diff.status == "name_check_required" for diff in differences):
             line_status = "name_check_required"
-        elif differences:
+        elif any(diff.status == "different" for diff in differences):
             line_status = "different"
         else:
             line_status = "matched"
@@ -171,6 +173,12 @@ def compare_documents(
         "name_check_required": sum(1 for item in comparisons if item.status == "name_check_required"),
         "missing_invoice_item": sum(1 for item in comparisons if item.status == "missing_invoice_item"),
         "missing_delivery_item": sum(1 for item in comparisons if item.status == "missing_delivery_item"),
+        "tax_adjusted_match": sum(
+            1
+            for item in comparisons
+            for diff in item.differences
+            if diff.status == "tax_adjusted_match"
+        ),
     }
 
     return MatchingResult(

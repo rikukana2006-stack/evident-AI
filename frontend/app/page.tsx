@@ -54,7 +54,7 @@ type MatchingResult = {
       field: string;
       delivery_value: string | null;
       invoice_value: string | null;
-      status: "matched" | "different" | "name_check_required";
+      status: "matched" | "different" | "name_check_required" | "tax_adjusted_match";
     }>;
   }>;
 };
@@ -85,6 +85,8 @@ const statusLabel: Record<string, string> = {
   rejected: "却下",
 };
 
+statusLabel.tax_adjusted_match = "税抜/税込換算で一致";
+
 const fieldLabel: Record<string, string> = {
   item_name: "品名",
   quantity: "数量",
@@ -94,7 +96,8 @@ const fieldLabel: Record<string, string> = {
   line_item: "明細",
 };
 
-function formatDifference(field: string, deliveryValue: string | null, invoiceValue: string | null) {
+function formatDifference(field: string, deliveryValue: string | null, invoiceValue: string | null, status?: string) {
+  if (status === "tax_adjusted_match") return "税抜/税込換算で一致";
   if (!deliveryValue || !invoiceValue) return "-";
   if (!["quantity", "unit_price", "amount", "tax_rate"].includes(field)) return "-";
 
@@ -480,18 +483,20 @@ export default function Home() {
 
               {matchingResult ? (
                 <div className="grid gap-4">
-                  <div className="grid gap-4 md:grid-cols-4">
+                  <div className="grid gap-4 md:grid-cols-5">
                     <Metric label="Status" value={statusLabel[matchingResult.status]} />
                     <Metric label="Name check" value={matchingResult.summary.name_check_required ?? 0} />
                     <Metric label="Different" value={matchingResult.summary.different ?? 0} />
                     <Metric label="Matched" value={matchingResult.summary.matched ?? 0} />
+                    <Metric label="Tax adjusted" value={matchingResult.summary.tax_adjusted_match ?? 0} />
                   </div>
                   <div className="rounded-lg border border-line bg-white p-4">
                     <h3 className="text-sm font-bold text-zinc-700">Review focus</h3>
-                    <div className="mt-3 grid gap-3 md:grid-cols-3">
+                    <div className="mt-3 grid gap-3 md:grid-cols-4">
                       <Metric label="品名確認" value={matchingResult.summary.name_check_required ?? 0} />
                       <Metric label="数量・単価・金額差異" value={matchingResult.summary.different ?? 0} />
                       <Metric label="不足明細" value={(matchingResult.summary.missing_invoice_item ?? 0) + (matchingResult.summary.missing_delivery_item ?? 0)} />
+                      <Metric label="税抜/税込換算一致" value={matchingResult.summary.tax_adjusted_match ?? 0} />
                     </div>
                   </div>
                   <div className="grid gap-3">
@@ -792,7 +797,7 @@ function ResultRow({ line }: { line: MatchingResult["line_comparisons"][number] 
                   <td className="py-2 pr-3 font-semibold">{fieldLabel[diff.field] ?? diff.field}</td>
                   <td className="py-2 pr-3">{diff.delivery_value ?? "-"}</td>
                   <td className="py-2 pr-3">{diff.invoice_value ?? "-"}</td>
-                  <td className="py-2 pr-3 font-semibold">{formatDifference(diff.field, diff.delivery_value, diff.invoice_value)}</td>
+                  <td className="py-2 pr-3 font-semibold">{formatDifference(diff.field, diff.delivery_value, diff.invoice_value, diff.status)}</td>
                   <td className="py-2 pr-3">{statusLabel[diff.status]}</td>
                 </tr>
               ))
