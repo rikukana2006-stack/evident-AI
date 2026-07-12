@@ -1,4 +1,5 @@
 from difflib import SequenceMatcher
+from decimal import Decimal, ROUND_HALF_UP
 
 from app.schemas import ExtractedDocument, FieldDifference, LineComparison, MatchingResult
 
@@ -17,6 +18,37 @@ def name_similarity(left: str, right: str) -> float:
 
 def values_match(left: object, right: object) -> bool:
     return str(left) == str(right)
+
+
+def round_yen(value: Decimal) -> Decimal:
+    return value.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+
+
+def tax_multiplier(tax_rate: object) -> Decimal:
+    return Decimal("1") + (Decimal(str(tax_rate)) / Decimal("100"))
+
+
+def numeric_values_match(left: object, right: object, tolerance: Decimal = Decimal("1")) -> bool:
+    return abs(Decimal(str(left)) - Decimal(str(right))) <= tolerance
+
+
+def price_values_match(delivery_value: object, invoice_value: object, tax_rate: object) -> bool:
+    if numeric_values_match(delivery_value, invoice_value, Decimal("0")):
+        return True
+
+    delivery_amount = Decimal(str(delivery_value))
+    invoice_amount = Decimal(str(invoice_value))
+    multiplier = tax_multiplier(tax_rate)
+
+    # Suppliers often put tax-exclusive prices on delivery notes and tax-inclusive
+    # prices on invoices. Treat those as equivalent so reviewers focus on real
+    # business differences instead of display-format differences.
+    delivery_as_tax_included = round_yen(delivery_amount * multiplier)
+    invoice_as_tax_included = round_yen(invoice_amount * multiplier)
+    return numeric_values_match(delivery_as_tax_included, invoice_amount) or numeric_values_match(
+        invoice_as_tax_included,
+        delivery_amount,
+    )
 
 
 def compare_documents(
@@ -83,7 +115,12 @@ def compare_documents(
         for field in ("quantity", "unit_price", "amount", "tax_rate"):
             delivery_value = getattr(delivery_item, field)
             invoice_value = getattr(invoice_item, field)
-            if not values_match(delivery_value, invoice_value):
+            if field in {"unit_price", "amount"}:
+                field_matches = price_values_match(delivery_value, invoice_value, delivery_item.tax_rate)
+            else:
+                field_matches = values_match(delivery_value, invoice_value)
+
+            if not field_matches:
                 differences.append(
                     FieldDifference(
                         field=field,

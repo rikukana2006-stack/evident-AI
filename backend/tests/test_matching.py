@@ -34,3 +34,46 @@ def test_demo_matching_flags_expected_differences() -> None:
         ("unit_price", "different"),
         ("amount", "different"),
     ]
+
+
+def test_matching_accepts_tax_exclusive_delivery_against_tax_inclusive_invoice() -> None:
+    delivery = ExtractedDocument.model_validate(
+        {
+            "document_type": "delivery_note",
+            "vendor_name": "Supplier",
+            "document_date": "2026-07-10",
+            "document_number": "DN-100",
+            "items": [
+                {
+                    "item_name": "病院用ハイター5kg",
+                    "quantity": 1,
+                    "unit_price": 3360,
+                    "amount": 3360,
+                    "tax_rate": 10,
+                }
+            ],
+        }
+    )
+    invoice = ExtractedDocument.model_validate(
+        {
+            "document_type": "invoice",
+            "vendor_name": "Supplier",
+            "document_date": "2026-07-31",
+            "document_number": "INV-100",
+            "items": [
+                {
+                    "item_name": "病院用ハイター5kg",
+                    "quantity": 1,
+                    "unit_price": 3696,
+                    "amount": 3696,
+                    "tax_rate": 10,
+                }
+            ],
+        }
+    )
+
+    result = compare_documents("delivery-id", "invoice-id", delivery, invoice)
+
+    assert result.status == "matched"
+    assert result.summary["matched"] == 1
+    assert result.line_comparisons[0].differences == []
