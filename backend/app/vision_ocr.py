@@ -553,6 +553,20 @@ def flatten_paddle_result(result: object) -> list[str]:
     return texts
 
 
+def run_paddle_prediction(ocr: object, image_path: Path) -> object:
+    # PaddleOCR 3.x exposes both predict() and legacy ocr() on some builds.
+    # Prefer predict(); the legacy path can fail on Windows with native runtime errors.
+    predict = getattr(ocr, "predict", None)
+    if callable(predict):
+        return predict(str(image_path))
+
+    legacy_ocr = getattr(ocr, "ocr", None)
+    if callable(legacy_ocr):
+        return legacy_ocr(str(image_path))
+
+    raise RuntimeError("PaddleOCR object does not expose predict() or ocr().")
+
+
 def run_paddle_vision_ocr(
     document_type: str,
     filename: str,
@@ -577,10 +591,7 @@ def run_paddle_vision_ocr(
         text_lines: list[str] = []
         paddle_results: list[object] = []
         for image_path in selected_images:
-            if hasattr(ocr, "ocr"):
-                result = ocr.ocr(str(image_path))
-            else:
-                result = ocr.predict(str(image_path))
+            result = run_paddle_prediction(ocr, image_path)
             paddle_results.append(result)
             text_lines.extend(flatten_paddle_result(result))
     except Exception as exc:

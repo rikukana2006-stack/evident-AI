@@ -15,6 +15,7 @@ from app.vision_ocr import (
     parse_paddle_position_rows,
     parse_paddle_token_rows,
     prepare_paddle_input_images,
+    run_paddle_prediction,
 )
 
 
@@ -356,3 +357,17 @@ def test_prepare_paddle_input_images_uses_ascii_paths(tmp_path: Path) -> None:
     assert prepared[0].name == "page_1.png"
     assert prepared[0].read_bytes() == b"png bytes"
     assert str(prepared[0]).isascii()
+
+
+def test_run_paddle_prediction_prefers_predict(tmp_path: Path) -> None:
+    image_path = tmp_path / "page_1.png"
+    image_path.write_bytes(b"png bytes")
+
+    class PaddleStub:
+        def predict(self, path: str) -> list[dict[str, str]]:
+            return [{"called": "predict", "path": path}]
+
+        def ocr(self, path: str) -> list[dict[str, str]]:
+            raise AssertionError(f"legacy ocr() should not be called for {path}")
+
+    assert run_paddle_prediction(PaddleStub(), image_path) == [{"called": "predict", "path": str(image_path)}]
