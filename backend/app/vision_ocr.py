@@ -329,7 +329,7 @@ def parse_paddle_token_rows(text_lines: list[str]) -> list[dict[str, object]]:
     ]
 
 
-def extract_paddle_cells(result: object) -> list[dict[str, object]]:
+def extract_paddle_cells(result: object, page_index: int | None = None) -> list[dict[str, object]]:
     cells: list[dict[str, object]] = []
 
     def to_box(value: object) -> list[float] | None:
@@ -364,6 +364,7 @@ def extract_paddle_cells(result: object) -> list[dict[str, object]]:
                             cells.append(
                                 {
                                     "text": text_value,
+                                    "page_index": page_index,
                                     "x1": box[0],
                                     "y1": box[1],
                                     "x2": box[2],
@@ -382,9 +383,27 @@ def extract_paddle_cells(result: object) -> list[dict[str, object]]:
     return cells
 
 
+def extract_paddle_cells_by_page(paddle_results: list[object]) -> list[dict[str, object]]:
+    cells: list[dict[str, object]] = []
+    for page_index, result in enumerate(paddle_results, start=1):
+        cells.extend(extract_paddle_cells(result, page_index=page_index))
+    return cells
+
+
 def parse_paddle_position_rows(cells: list[dict[str, object]]) -> list[dict[str, object]]:
     if not cells:
         return []
+
+    cells_by_page: dict[int, list[dict[str, object]]] = {}
+    for cell in cells:
+        page_index = int(cell.get("page_index") or 1)
+        cells_by_page.setdefault(page_index, []).append(cell)
+
+    if len(cells_by_page) > 1:
+        parsed_rows: list[dict[str, object]] = []
+        for page_index in sorted(cells_by_page):
+            parsed_rows.extend(parse_paddle_position_rows(cells_by_page[page_index]))
+        return parsed_rows
 
     rows = group_cells_by_y(cells)
     header_row = find_paddle_table_header_row(rows)
@@ -574,7 +593,7 @@ def run_paddle_vision_ocr(
         )
 
     text = "\n".join(text_lines)
-    cells = extract_paddle_cells(paddle_results)
+    cells = extract_paddle_cells_by_page(paddle_results)
     rows = parse_paddle_position_rows(cells)
     if not rows:
         rows = parse_ocr_text_rows(text)
