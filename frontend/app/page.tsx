@@ -155,6 +155,7 @@ export default function Home() {
   const [invoiceJson, setInvoiceJson] = useState("");
   const [matchingResult, setMatchingResult] = useState<MatchingResult | null>(null);
   const [ocrStatus, setOcrStatus] = useState<OcrStatus | null>(null);
+  const [ocrProgress, setOcrProgress] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -224,19 +225,24 @@ export default function Home() {
     if (!deliveryDocument || !invoiceDocument) return;
     setLoading(true);
     setError(null);
+    setOcrProgress("Delivery Note OCR is running...");
     try {
-      const [delivery, invoice] = await Promise.all([
-        request<DocumentRecord>(`/documents/${deliveryDocument.id}/ocr`, { method: "POST" }),
-        request<DocumentRecord>(`/documents/${invoiceDocument.id}/ocr`, { method: "POST" }),
-      ]);
+      // PaddleOCR is CPU-heavy on Windows. Run the two OCR jobs sequentially so
+      // the local backend remains responsive and the user can see progress.
+      const delivery = await request<DocumentRecord>(`/documents/${deliveryDocument.id}/ocr`, { method: "POST" });
       setDeliveryDocument(delivery);
-      setInvoiceDocument(invoice);
       setDeliveryJson(JSON.stringify(delivery.ocr_data, null, 2));
+
+      setOcrProgress("Invoice OCR is running...");
+      const invoice = await request<DocumentRecord>(`/documents/${invoiceDocument.id}/ocr`, { method: "POST" });
+      setInvoiceDocument(invoice);
       setInvoiceJson(JSON.stringify(invoice.ocr_data, null, 2));
+      setOcrProgress("OCR completed. Please review the extracted details.");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "OCRに失敗しました。");
     } finally {
       setLoading(false);
+      setTimeout(() => setOcrProgress(null), 4000);
     }
   }
 
@@ -398,9 +404,13 @@ export default function Home() {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <h2 className="text-2xl font-bold">OCR Review</h2>
                 <div className="flex gap-2">
-                  <button className="inline-flex h-10 items-center gap-2 rounded-md border border-line bg-white px-4 font-bold" disabled={loading || !deliveryDocument || !invoiceDocument} onClick={runOcr}>
-                    <Play size={17} />
-                    Run AI OCR
+                  <button
+                    className="inline-flex h-10 items-center gap-2 rounded-md border border-line bg-white px-4 font-bold disabled:bg-zinc-100 disabled:text-zinc-500"
+                    disabled={loading || !deliveryDocument || !invoiceDocument}
+                    onClick={runOcr}
+                  >
+                    {loading ? <Hourglass size={17} /> : <Play size={17} />}
+                    {loading ? "Running OCR..." : "Run AI OCR"}
                   </button>
                   <button className="inline-flex h-10 items-center gap-2 rounded-md bg-teal-700 px-4 font-bold text-white disabled:bg-zinc-400" disabled={loading || !canMatch} onClick={saveReviewedDocuments}>
                     <Check size={17} />
@@ -408,6 +418,7 @@ export default function Home() {
                   </button>
                 </div>
               </div>
+              {ocrProgress ? <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900">{ocrProgress}</div> : null}
               <OcrStatusBanner status={ocrStatus} />
               <div className="grid gap-3 xl:grid-cols-2">
                 <OcrNote title="Delivery Note" provider={deliveryDocument?.ocr_data?.ocr_provider} note={deliveryDocument?.ocr_data?.ocr_note} />
