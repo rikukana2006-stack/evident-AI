@@ -1,10 +1,12 @@
 import base64
+import importlib.util
 import json
 import mimetypes
 import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 from pathlib import Path
@@ -567,6 +569,33 @@ def run_paddle_prediction(ocr: object, image_path: Path) -> object:
     raise RuntimeError("PaddleOCR object does not expose predict() or ocr().")
 
 
+def run_paddle_predictions_in_subprocess(image_paths: list[Path], cache_root: Path) -> list[object]:
+    job_dir = cache_root / "worker_jobs" / uuid4().hex
+    job_dir.mkdir(parents=True, exist_ok=True)
+    input_path = job_dir / "input.json"
+    output_path = job_dir / "output.json"
+    input_path.write_text(
+        json.dumps({"images": [str(path) for path in image_paths]}, ensure_ascii=True),
+        encoding="utf-8",
+    )
+
+    # PaddleOCR can terminate the Python process on some Windows/native-runtime
+    # failures. Run it outside FastAPI so the web API stays alive and can return
+    # a readable OCR error to the screen.
+    completed = subprocess.run(
+        [sys.executable, "-m", "app.paddle_worker", str(input_path), str(output_path)],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True,
+        text=True,
+        timeout=240,
+    )
+    if completed.returncode != 0:
+        error_text = (completed.stderr or completed.stdout or "").strip()
+        raise RuntimeError(error_text[-1000:] or f"PaddleOCR worker exited with code {completed.returncode}.")
+
+    return json.loads(output_path.read_text(encoding="utf-8"))
+
+
 def run_paddle_vision_ocr(
     document_type: str,
     filename: str,
@@ -575,8 +604,11 @@ def run_paddle_vision_ocr(
 ) -> ExtractedDocument:
     try:
         cache_root = configure_paddle_cache()
-        ocr = get_paddle_ocr()
+        has_paddle = importlib.util.find_spec("paddleocr") is not None
     except ImportError:
+        has_paddle = False
+
+    if not has_paddle:
         return build_empty_vision_document(
             document_type,
             filename,
@@ -588,11 +620,9 @@ def run_paddle_vision_ocr(
     selected_images = image_paths[: settings.vision_ocr_max_images]
     try:
         selected_images = prepare_paddle_input_images(selected_images, cache_root)
-        text_lines: list[str] = []
-        paddle_results: list[object] = []
-        for image_path in selected_images:
-            result = run_paddle_prediction(ocr, image_path)
-            paddle_results.append(result)
+        paddle_results = run_paddle_predictions_in_subprocess(selected_images, cache_root)
+        text_lines = []
+        for result in paddle_results:
             text_lines.extend(flatten_paddle_result(result))
     except Exception as exc:
         return build_empty_vision_document(
