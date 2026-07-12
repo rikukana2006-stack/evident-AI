@@ -11,7 +11,7 @@ import {
   ShieldCheck,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 
 type Screen = "login" | "dashboard" | "upload" | "ocr" | "result";
 type DocumentType = "delivery_note" | "invoice";
@@ -182,12 +182,30 @@ export default function Home() {
   }
 
   useEffect(() => {
+    const savedEmail = window.localStorage.getItem("evident-ai-user-email");
+    if (!savedEmail) return;
+    setUserEmail(savedEmail);
+    setScreen("dashboard");
+  }, []);
+
+  useEffect(() => {
     if (screen !== "ocr") return;
     fetch(`${API_BASE}/ocr/status`)
       .then((response) => (response.ok ? response.json() : null))
       .then((data) => setOcrStatus(data as OcrStatus | null))
       .catch(() => setOcrStatus(null));
   }, [screen]);
+
+  function login(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!userEmail.trim() || !password.trim()) {
+      setError("メールアドレスとパスワードを入力してください。");
+      return;
+    }
+    window.localStorage.setItem("evident-ai-user-email", userEmail.trim());
+    setError(null);
+    setScreen("dashboard");
+  }
 
   async function uploadOne(documentType: DocumentType, file: File) {
     const form = new FormData();
@@ -316,24 +334,25 @@ export default function Home() {
   if (screen === "login") {
     return (
       <main className="min-h-screen bg-paper px-6 py-10 text-ink">
-        <section className="mx-auto grid max-w-md gap-6 rounded-lg border border-line bg-white p-8 shadow-sm">
+        <form className="mx-auto grid max-w-md gap-6 rounded-lg border border-line bg-white p-8 shadow-sm" onSubmit={login}>
           <div>
             <p className="text-sm font-semibold text-teal-700">Evident AI</p>
             <h1 className="mt-2 text-2xl font-bold">Fukkei Match Login</h1>
           </div>
           <label className="grid gap-2 text-sm font-semibold">
             Email
-            <input className="rounded-md border border-line px-3 py-2" value={userEmail} onChange={(event) => setUserEmail(event.target.value)} />
+            <input className="rounded-md border border-line px-3 py-2" type="email" autoComplete="email" value={userEmail} onChange={(event) => setUserEmail(event.target.value)} />
           </label>
           <label className="grid gap-2 text-sm font-semibold">
             Password
-            <input className="rounded-md border border-line px-3 py-2" type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
+            <input className="rounded-md border border-line px-3 py-2" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} />
           </label>
-          <button className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-teal-700 px-4 font-bold text-white" onClick={() => setScreen("dashboard")}>
+          {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold text-red-700">{error}</div> : null}
+          <button className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-teal-700 px-4 font-bold text-white" type="submit">
             <LogIn size={18} />
             Login
           </button>
-        </section>
+        </form>
       </main>
     );
   }
