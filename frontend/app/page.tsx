@@ -77,6 +77,7 @@ const statusLabel: Record<string, string> = {
   matched: "一致",
   different: "差異あり",
   name_check_required: "品名確認",
+  tax_adjusted_match: "税抜/税込換算で一致",
   missing_invoice_item: "請求書に不足",
   missing_delivery_item: "納品書に不足",
   review_required: "確認待ち",
@@ -84,8 +85,6 @@ const statusLabel: Record<string, string> = {
   held: "保留",
   rejected: "却下",
 };
-
-statusLabel.tax_adjusted_match = "税抜/税込換算で一致";
 
 const fieldLabel: Record<string, string> = {
   item_name: "品名",
