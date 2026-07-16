@@ -166,10 +166,10 @@ export default function Home() {
 
   const navItems = useMemo(
     () => [
-      ["dashboard", "Dashboard"],
-      ["upload", "Document Upload"],
-      ["ocr", "OCR Review"],
-      ["result", "Matching Result"],
+      ["dashboard", "ダッシュボード"],
+      ["upload", "書類アップロード"],
+      ["ocr", "OCR確認"],
+      ["result", "突合結果"],
     ] as const,
     [],
   );
@@ -245,7 +245,7 @@ export default function Home() {
     if (!deliveryDocument || !invoiceDocument) return;
     setLoading(true);
     setError(null);
-    setOcrProgress("Delivery Note OCR is running...");
+    setOcrProgress("納品書のOCRを実行中です...");
     try {
       // PaddleOCR is CPU-heavy on Windows. Run the two OCR jobs sequentially so
       // the local backend remains responsive and the user can see progress.
@@ -253,11 +253,11 @@ export default function Home() {
       setDeliveryDocument(delivery);
       setDeliveryJson(JSON.stringify(delivery.ocr_data, null, 2));
 
-      setOcrProgress("Invoice OCR is running...");
+      setOcrProgress("請求書のOCRを実行中です...");
       const invoice = await request<DocumentRecord>(`/documents/${invoiceDocument.id}/ocr`, { method: "POST" });
       setInvoiceDocument(invoice);
       setInvoiceJson(JSON.stringify(invoice.ocr_data, null, 2));
-      setOcrProgress("OCR completed. Please review the extracted details.");
+      setOcrProgress("OCRが完了しました。抽出された明細を確認してください。");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "OCRに失敗しました。");
     } finally {
@@ -339,20 +339,20 @@ export default function Home() {
         <form className="mx-auto grid max-w-md gap-6 rounded-lg border border-line bg-white p-8 shadow-sm" onSubmit={login}>
           <div>
             <p className="text-sm font-semibold text-teal-700">Evident AI</p>
-            <h1 className="mt-2 text-2xl font-bold">Fukkei Match Login</h1>
+            <h1 className="mt-2 text-2xl font-bold">Fukkei Match ログイン</h1>
           </div>
           <label className="grid gap-2 text-sm font-semibold">
-            Email
+            メールアドレス
             <input className="rounded-md border border-line px-3 py-2" type="email" autoComplete="email" value={userEmail} onChange={(event) => setUserEmail(event.target.value)} />
           </label>
           <label className="grid gap-2 text-sm font-semibold">
-            Password
+            パスワード
             <input className="rounded-md border border-line px-3 py-2" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} />
           </label>
           {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold text-red-700">{error}</div> : null}
           <button className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-teal-700 px-4 font-bold text-white" type="submit">
             <LogIn size={18} />
-            Login
+            ログイン
           </button>
         </form>
       </main>
@@ -390,32 +390,32 @@ export default function Home() {
           {screen === "dashboard" ? (
             <div className="grid gap-5">
               <div>
-                <h2 className="text-2xl font-bold">Dashboard</h2>
+                <h2 className="text-2xl font-bold">ダッシュボード</h2>
                 <p className="mt-1 text-sm text-zinc-600">納品書と請求書のアップロードから突合結果の承認まで進めます。</p>
               </div>
               <div className="grid gap-4 md:grid-cols-3">
-                <Metric label="Uploaded documents" value={(deliveryDocument ? 1 : 0) + (invoiceDocument ? 1 : 0)} />
-                <Metric label="OCR reviewed" value={canReview ? 2 : 0} />
-                <Metric label="Latest matching" value={matchingResult ? statusLabel[matchingResult.status] : "未実行"} />
+                <Metric label="アップロード済み書類" value={(deliveryDocument ? 1 : 0) + (invoiceDocument ? 1 : 0)} />
+                <Metric label="OCR確認済み" value={canReview ? 2 : 0} />
+                <Metric label="直近の突合" value={matchingResult ? statusLabel[matchingResult.status] : "未実行"} />
               </div>
               <button className="inline-flex h-11 w-fit items-center gap-2 rounded-md bg-teal-700 px-4 font-bold text-white" onClick={() => setScreen("upload")}>
                 <FileUp size={18} />
-                Start Upload
+                アップロードを開始
               </button>
             </div>
           ) : null}
 
           {screen === "upload" ? (
             <div className="grid gap-5">
-              <h2 className="text-2xl font-bold">Document Upload</h2>
+              <h2 className="text-2xl font-bold">書類アップロード</h2>
               <p className="text-sm text-zinc-600">対応形式: {ACCEPTED_DOCUMENT_TYPES_LABEL}</p>
               <div className="grid gap-4 lg:grid-cols-2">
-                <FilePicker title="Delivery Note" file={deliveryFile} onChange={setDeliveryFile} />
-                <FilePicker title="Invoice" file={invoiceFile} onChange={setInvoiceFile} />
+                <FilePicker title="納品書" file={deliveryFile} onChange={setDeliveryFile} />
+                <FilePicker title="請求書" file={invoiceFile} onChange={setInvoiceFile} />
               </div>
               <button className="inline-flex h-11 w-fit items-center gap-2 rounded-md bg-teal-700 px-4 font-bold text-white disabled:bg-zinc-400" disabled={loading} onClick={uploadDocuments}>
                 <FileCheck2 size={18} />
-                Upload Documents
+                書類をアップロード
               </button>
             </div>
           ) : null}
@@ -423,7 +423,7 @@ export default function Home() {
           {screen === "ocr" ? (
             <div className="grid gap-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <h2 className="text-2xl font-bold">OCR Review</h2>
+                <h2 className="text-2xl font-bold">OCR確認</h2>
                 <div className="flex gap-2">
                   <button
                     className="inline-flex h-10 items-center gap-2 rounded-md border border-line bg-white px-4 font-bold disabled:bg-zinc-100 disabled:text-zinc-500"
@@ -431,23 +431,23 @@ export default function Home() {
                     onClick={runOcr}
                   >
                     {loading ? <Hourglass size={17} /> : <Play size={17} />}
-                    {loading ? "Running OCR..." : "Run AI OCR"}
+                    {loading ? "OCR実行中..." : "AI OCRを実行"}
                   </button>
                   <button className="inline-flex h-10 items-center gap-2 rounded-md bg-teal-700 px-4 font-bold text-white disabled:bg-zinc-400" disabled={loading || !canMatch} onClick={saveReviewedDocuments}>
                     <Check size={17} />
-                    Save Review
+                    確認内容を保存
                   </button>
                 </div>
               </div>
               {ocrProgress ? <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900">{ocrProgress}</div> : null}
               <OcrStatusBanner status={ocrStatus} />
               <div className="grid gap-3 xl:grid-cols-2">
-                <OcrNote title="Delivery Note" provider={deliveryDocument?.ocr_data?.ocr_provider} note={deliveryDocument?.ocr_data?.ocr_note} />
-                <OcrNote title="Invoice" provider={invoiceDocument?.ocr_data?.ocr_provider} note={invoiceDocument?.ocr_data?.ocr_note} />
+                <OcrNote title="納品書" provider={deliveryDocument?.ocr_data?.ocr_provider} note={deliveryDocument?.ocr_data?.ocr_note} />
+                <OcrNote title="請求書" provider={invoiceDocument?.ocr_data?.ocr_provider} note={invoiceDocument?.ocr_data?.ocr_note} />
               </div>
               <div className="grid gap-4 xl:grid-cols-2">
-                <OcrWorkspace title="Delivery Note" document={deliveryDocument} value={deliveryJson} onChange={setDeliveryJson} />
-                <OcrWorkspace title="Invoice" document={invoiceDocument} value={invoiceJson} onChange={setInvoiceJson} />
+                <OcrWorkspace title="納品書" document={deliveryDocument} value={deliveryJson} onChange={setDeliveryJson} />
+                <OcrWorkspace title="請求書" document={invoiceDocument} value={invoiceJson} onChange={setInvoiceJson} />
               </div>
             </div>
           ) : null}
@@ -455,27 +455,27 @@ export default function Home() {
           {screen === "result" ? (
             <div className="grid gap-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <h2 className="text-2xl font-bold">Matching Result</h2>
+                <h2 className="text-2xl font-bold">突合結果</h2>
                 <div className="flex flex-wrap gap-2">
                   <button className="inline-flex h-10 items-center gap-2 rounded-md border border-line bg-white px-4 font-bold" disabled={loading || !deliveryDocument || !invoiceDocument} onClick={runMatching}>
                     <ShieldCheck size={17} />
-                    Run Matching
+                    突合を実行
                   </button>
                   <button className="inline-flex h-10 items-center gap-2 rounded-md bg-emerald-700 px-4 font-bold text-white disabled:bg-zinc-400" disabled={!matchingResult} onClick={() => updateMatchingStatus("approve")}>
                     <Check size={17} />
-                    Approve
+                    承認
                   </button>
                   <button className="inline-flex h-10 items-center gap-2 rounded-md bg-amber-600 px-4 font-bold text-white disabled:bg-zinc-400" disabled={!matchingResult} onClick={() => updateMatchingStatus("hold")}>
                     <Hourglass size={17} />
-                    Hold
+                    保留
                   </button>
                   <button className="inline-flex h-10 items-center gap-2 rounded-md bg-red-700 px-4 font-bold text-white disabled:bg-zinc-400" disabled={!matchingResult} onClick={() => updateMatchingStatus("reject")}>
                     <X size={17} />
-                    Reject
+                    却下
                   </button>
                   <button className="inline-flex h-10 items-center gap-2 rounded-md border border-line bg-white px-4 font-bold disabled:text-zinc-400" disabled={!matchingResult} onClick={exportCsv}>
                     <Download size={17} />
-                    CSV
+                    CSV出力
                   </button>
                 </div>
               </div>
@@ -483,14 +483,14 @@ export default function Home() {
               {matchingResult ? (
                 <div className="grid gap-4">
                   <div className="grid gap-4 md:grid-cols-5">
-                    <Metric label="Status" value={statusLabel[matchingResult.status]} />
-                    <Metric label="Name check" value={matchingResult.summary.name_check_required ?? 0} />
-                    <Metric label="Different" value={matchingResult.summary.different ?? 0} />
-                    <Metric label="Matched" value={matchingResult.summary.matched ?? 0} />
-                    <Metric label="Tax adjusted" value={matchingResult.summary.tax_adjusted_match ?? 0} />
+                    <Metric label="ステータス" value={statusLabel[matchingResult.status]} />
+                    <Metric label="品名確認" value={matchingResult.summary.name_check_required ?? 0} />
+                    <Metric label="差異あり" value={matchingResult.summary.different ?? 0} />
+                    <Metric label="一致" value={matchingResult.summary.matched ?? 0} />
+                    <Metric label="税換算一致" value={matchingResult.summary.tax_adjusted_match ?? 0} />
                   </div>
                   <div className="rounded-lg border border-line bg-white p-4">
-                    <h3 className="text-sm font-bold text-zinc-700">Review focus</h3>
+                    <h3 className="text-sm font-bold text-zinc-700">確認すべきポイント</h3>
                     <div className="mt-3 grid gap-3 md:grid-cols-4">
                       <Metric label="品名確認" value={matchingResult.summary.name_check_required ?? 0} />
                       <Metric label="数量・単価・金額差異" value={matchingResult.summary.different ?? 0} />
@@ -505,7 +505,7 @@ export default function Home() {
                   </div>
                 </div>
               ) : (
-                <div className="rounded-lg border border-line bg-white p-8 text-center text-zinc-600">Run Matching to see differences for milk and bread.</div>
+                <div className="rounded-lg border border-line bg-white p-8 text-center text-zinc-600">突合を実行すると、納品書と請求書の差異が表示されます。</div>
               )}
             </div>
           ) : null}
@@ -530,7 +530,7 @@ function FilePicker({ title, file, onChange }: { title: string; file: File | nul
       <span className="text-lg font-bold">{title}</span>
       <input className="rounded-md border border-line p-2" type="file" accept={ACCEPTED_DOCUMENT_TYPES} onChange={(event) => onChange(event.target.files?.[0] ?? null)} />
       <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">{ACCEPTED_DOCUMENT_TYPES_LABEL}</span>
-      <span className="text-sm text-zinc-600">{file?.name ?? "No file selected"}</span>
+      <span className="text-sm text-zinc-600">{file?.name ?? "ファイルが選択されていません"}</span>
     </label>
   );
 }
@@ -544,11 +544,11 @@ function OcrStatusBanner({ status }: { status: OcrStatus | null }) {
       : status.openai_vision_model;
   return (
     <div className={`rounded-lg border p-4 text-sm ${ready ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
-      <div className="font-bold">{ready ? "AI OCR is enabled" : "AI OCR is not enabled"}</div>
+      <div className="font-bold">{ready ? "AI OCRは利用可能です" : "AI OCRは未設定です"}</div>
       <div className="mt-1">
-        Provider: <span className="font-mono">{status.vision_ocr_provider}</span> / Model: <span className="font-mono">{model}</span> / API key:{" "}
-        {status.openai_api_key_configured ? "configured" : "not configured"}
-        {status.paddle_cache_dir ? <> / Cache: <span className="font-mono">{status.paddle_cache_dir}</span></> : null}
+        OCR方式: <span className="font-mono">{status.vision_ocr_provider}</span> / モデル: <span className="font-mono">{model}</span> / APIキー:{" "}
+        {status.openai_api_key_configured ? "設定済み" : "未設定"}
+        {status.paddle_cache_dir ? <> / キャッシュ: <span className="font-mono">{status.paddle_cache_dir}</span></> : null}
       </div>
     </div>
   );
@@ -567,8 +567,8 @@ function DocumentPreview({ title, document }: { title: string; document: Documen
   if (!document) {
     return (
       <section className="rounded-lg border border-line bg-white p-5">
-        <h3 className="text-lg font-bold">{title} Source</h3>
-        <div className="mt-3 text-sm text-zinc-500">No file uploaded.</div>
+        <h3 className="text-lg font-bold">{title}の原本</h3>
+        <div className="mt-3 text-sm text-zinc-500">ファイルはまだアップロードされていません。</div>
       </section>
     );
   }
@@ -582,20 +582,20 @@ function DocumentPreview({ title, document }: { title: string; document: Documen
     <section className="grid gap-3 rounded-lg border border-line bg-white p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="text-lg font-bold">{title} Source</h3>
+          <h3 className="text-lg font-bold">{title}の原本</h3>
           <div className="mt-1 text-xs font-semibold text-zinc-500">{document.original_filename}</div>
         </div>
         <a className="rounded-md border border-line px-3 py-2 text-sm font-bold" href={source} target="_blank" rel="noreferrer">
-          Open file
+          原本を開く
         </a>
       </div>
 
-      {isPdf ? <iframe className="h-[420px] w-full rounded-md border border-line bg-zinc-50" src={source} title={`${title} PDF preview`} /> : null}
+      {isPdf ? <iframe className="h-[420px] w-full rounded-md border border-line bg-zinc-50" src={source} title={`${title} PDFプレビュー`} /> : null}
       {isImage ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img className="max-h-[420px] w-full rounded-md border border-line object-contain" src={source} alt={`${title} source`} />
+        <img className="max-h-[420px] w-full rounded-md border border-line object-contain" src={source} alt={`${title}の原本`} />
       ) : null}
-      {!isPdf && !isImage ? <div className="rounded-md border border-line bg-zinc-50 p-4 text-sm text-zinc-600">Preview is not available for this file type. Use Open file.</div> : null}
+      {!isPdf && !isImage ? <div className="rounded-md border border-line bg-zinc-50 p-4 text-sm text-zinc-600">この形式は画面内プレビューに対応していません。「原本を開く」から確認してください。</div> : null}
     </section>
   );
 }
@@ -643,26 +643,26 @@ function OcrReviewPanel({ title, value, onChange }: { title: string; value: stri
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="text-lg font-bold">{title}</h3>
-          <div className="mt-1 text-xs font-semibold text-zinc-500">{document.items.length} line items</div>
+          <div className="mt-1 text-xs font-semibold text-zinc-500">{document.items.length}件の明細</div>
         </div>
         {document.items.length > 0 ? (
           <button className="h-9 rounded-md border border-line bg-white px-3 text-sm font-bold" type="button" onClick={addItem}>
-            Add line
+            明細を追加
           </button>
         ) : null}
       </div>
 
       <div className="grid gap-3 md:grid-cols-3">
         <label className="grid gap-1 text-sm font-semibold">
-          Vendor
+          取引先
           <input className="h-10 rounded-md border border-line px-3 font-normal" value={document.vendor_name} onChange={(event) => updateField("vendor_name", event.target.value)} />
         </label>
         <label className="grid gap-1 text-sm font-semibold">
-          Date
+          日付
           <input className="h-10 rounded-md border border-line px-3 font-normal" value={document.document_date} onChange={(event) => updateField("document_date", event.target.value)} />
         </label>
         <label className="grid gap-1 text-sm font-semibold">
-          Number
+          書類番号
           <input className="h-10 rounded-md border border-line px-3 font-normal" value={document.document_number} onChange={(event) => updateField("document_number", event.target.value)} />
         </label>
       </div>
@@ -671,11 +671,11 @@ function OcrReviewPanel({ title, value, onChange }: { title: string; value: stri
         <table className="w-full min-w-[760px] border-collapse text-sm">
           <thead>
             <tr className="border-y border-line text-left text-zinc-500">
-              <th className="py-2 pr-2">Item</th>
-              <th className="py-2 pr-2">Qty</th>
-              <th className="py-2 pr-2">Unit</th>
-              <th className="py-2 pr-2">Amount</th>
-              <th className="py-2 pr-2">Tax</th>
+              <th className="py-2 pr-2">品名</th>
+              <th className="py-2 pr-2">数量</th>
+              <th className="py-2 pr-2">単価</th>
+              <th className="py-2 pr-2">金額</th>
+              <th className="py-2 pr-2">税率</th>
               <th className="py-2 pr-2"></th>
             </tr>
           </thead>
@@ -699,7 +699,7 @@ function OcrReviewPanel({ title, value, onChange }: { title: string; value: stri
                 </td>
                 <td className="py-2 pr-2 text-right">
                   <button className="h-9 rounded-md border border-line px-3 text-sm font-bold text-red-700" type="button" onClick={() => removeItem(index)}>
-                    Remove
+                    削除
                   </button>
                 </td>
               </tr>
@@ -707,7 +707,7 @@ function OcrReviewPanel({ title, value, onChange }: { title: string; value: stri
             {document.items.length === 0 ? (
               <tr className="border-b border-line">
                 <td className="py-4 text-zinc-500" colSpan={6}>
-                  No line items were extracted. Configure and run AI OCR again before matching.
+                  明細を抽出できませんでした。OCR設定と原本を確認し、再度AI OCRを実行してください。
                 </td>
               </tr>
             ) : null}
@@ -716,12 +716,12 @@ function OcrReviewPanel({ title, value, onChange }: { title: string; value: stri
       </div>
 
       <details>
-        <summary className="cursor-pointer text-sm font-bold text-zinc-600">Advanced JSON</summary>
+        <summary className="cursor-pointer text-sm font-bold text-zinc-600">詳細JSON</summary>
         <div className="mt-3">
           <JsonEditor title={`${title} JSON`} value={value} onChange={onChange} framed={false} />
           {document.items.length === 0 ? (
             <button className="mt-3 h-9 rounded-md border border-line bg-white px-3 text-sm font-bold" type="button" onClick={addItem}>
-              Add manual line
+              明細を手動追加
             </button>
           ) : null}
         </div>
@@ -752,7 +752,7 @@ function OcrNote({ title, provider, note }: { title: string; provider?: string |
 }
 
 function ResultRow({ line }: { line: MatchingResult["line_comparisons"][number] }) {
-  const title = line.delivery_item?.item_name ?? line.invoice_item?.item_name ?? "Line item";
+  const title = line.delivery_item?.item_name ?? line.invoice_item?.item_name ?? "明細";
   const badgeClass =
     line.status === "matched"
       ? "bg-emerald-50 text-emerald-700"
@@ -768,12 +768,12 @@ function ResultRow({ line }: { line: MatchingResult["line_comparisons"][number] 
       </div>
       <div className="mt-3 grid gap-3 md:grid-cols-2">
         <div className="rounded-md bg-zinc-50 p-3">
-          <div className="text-xs font-bold uppercase text-zinc-500">Delivery Note</div>
+          <div className="text-xs font-bold text-zinc-500">納品書</div>
           <div className="mt-1 text-sm font-semibold">{line.delivery_item?.item_name ?? "-"}</div>
           <div className="mt-1 text-sm text-zinc-600">{lineTotal(line, "delivery_item")}</div>
         </div>
         <div className="rounded-md bg-zinc-50 p-3">
-          <div className="text-xs font-bold uppercase text-zinc-500">Invoice</div>
+          <div className="text-xs font-bold text-zinc-500">請求書</div>
           <div className="mt-1 text-sm font-semibold">{line.invoice_item?.item_name ?? "-"}</div>
           <div className="mt-1 text-sm text-zinc-600">{lineTotal(line, "invoice_item")}</div>
         </div>
@@ -783,10 +783,10 @@ function ResultRow({ line }: { line: MatchingResult["line_comparisons"][number] 
           <thead>
             <tr className="border-t border-line text-left text-zinc-500">
               <th className="py-2 pr-3">項目</th>
-              <th className="py-2 pr-3">Delivery Note</th>
-              <th className="py-2 pr-3">Invoice</th>
+              <th className="py-2 pr-3">納品書</th>
+              <th className="py-2 pr-3">請求書</th>
               <th className="py-2 pr-3">差分</th>
-              <th className="py-2 pr-3">Status</th>
+              <th className="py-2 pr-3">判定</th>
             </tr>
           </thead>
           <tbody>
@@ -803,7 +803,7 @@ function ResultRow({ line }: { line: MatchingResult["line_comparisons"][number] 
             ) : (
               <tr className="border-t border-line">
                 <td className="py-2 pr-3" colSpan={5}>
-                  All compared fields match.
+                  比較対象の項目はすべて一致しています。
                 </td>
               </tr>
             )}

@@ -3,7 +3,7 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse, Response
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -216,11 +216,13 @@ def reject_matching(matching_id: str, db: Session = Depends(get_db)) -> Matching
     return update_matching_status(matching_id, "rejected", db)
 
 
-@app.get("/matching/{matching_id}/csv", response_class=PlainTextResponse)
-def export_matching_csv(matching_id: str, db: Session = Depends(get_db)) -> PlainTextResponse:
+@app.get("/matching/{matching_id}/csv")
+def export_matching_csv(matching_id: str, db: Session = Depends(get_db)) -> Response:
     matching = get_matching_or_404(db, matching_id)
-    return PlainTextResponse(
-        matching_result_to_csv(matching.result),
-        media_type="text/csv",
+    # Add a UTF-8 BOM so Japanese text opens correctly in Windows Excel.
+    csv_body = "\ufeff" + matching_result_to_csv(matching.result)
+    return Response(
+        content=csv_body.encode("utf-8"),
+        media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="matching-{matching_id}.csv"'},
     )

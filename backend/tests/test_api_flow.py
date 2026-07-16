@@ -108,8 +108,9 @@ def test_api_flow_from_csv_upload_to_csv_export(client: TestClient) -> None:
 
     csv_response = client.get(f"/matching/{matching_id}/csv")
     assert csv_response.status_code == 200
-    assert "item_name" in csv_response.text
-    assert "unit_price" in csv_response.text
+    assert csv_response.content.startswith(b"\xef\xbb\xbf")
+    assert "品名" in csv_response.text
+    assert "単価" in csv_response.text
 
 
 def test_api_rejects_unsupported_upload(client: TestClient) -> None:
