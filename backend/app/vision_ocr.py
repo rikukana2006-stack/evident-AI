@@ -701,14 +701,21 @@ def run_openai_vision_ocr(
 
 
 def render_pdf_pages_to_images(storage_path: str, filename: str) -> tuple[list[Path], str | None]:
-    pdftoppm = find_pdftoppm_executable()
-    if not pdftoppm:
-        return [], "PDF画像化ツール pdftoppm が見つかりませんでした。"
-
     source = Path(storage_path).resolve()
     output_dir = settings.ocr_work_dir / source.stem
     output_dir.mkdir(parents=True, exist_ok=True)
-    output_prefix = (output_dir / Path(filename).stem).resolve()
+    # Use the stored UUID filename for generated images. Supplier PDFs often
+    # have Japanese filenames, which can break native PDF/image tooling on
+    # Windows when passed through subprocesses or PIL save paths.
+    output_prefix = (output_dir / source.stem).resolve()
+
+    images, note = render_pdf_pages_with_pypdfium2(source, output_dir, output_prefix.name)
+    if images or note is None:
+        return images, note
+
+    pdftoppm = find_pdftoppm_executable()
+    if not pdftoppm:
+        return [], note
 
     try:
         subprocess.run(
@@ -721,6 +728,31 @@ def render_pdf_pages_to_images(storage_path: str, filename: str) -> tuple[list[P
         return [], f"PDFを画像化できませんでした: {exc}"
 
     images = sorted(output_dir.glob(f"{output_prefix.name}-*.png"))
+    if not images:
+        return [], "PDF画像化は完了しましたが、画像ファイルが生成されませんでした。"
+    return images, None
+
+
+def render_pdf_pages_with_pypdfium2(source: Path, output_dir: Path, output_name: str) -> tuple[list[Path], str | None]:
+    try:
+        import pypdfium2 as pdfium
+    except ImportError:
+        return [], "PDF画像化ツールが見つかりませんでした。pypdfium2 または pdftoppm を利用できるようにしてください。"
+
+    try:
+        pdf = pdfium.PdfDocument(str(source))
+        images: list[Path] = []
+        scale = 200 / 72
+        for page_index in range(len(pdf)):
+            page = pdf[page_index]
+            bitmap = page.render(scale=scale)
+            image = bitmap.to_pil()
+            image_path = output_dir / f"{output_name}-{page_index + 1}.png"
+            image.save(image_path)
+            images.append(image_path)
+    except Exception as exc:
+        return [], f"PDFを画像化できませんでした: {exc}"
+
     if not images:
         return [], "PDF画像化は完了しましたが、画像ファイルが生成されませんでした。"
     return images, None
