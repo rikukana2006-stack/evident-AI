@@ -10,7 +10,7 @@ import {
   ShieldCheck,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 type Screen = "dashboard" | "upload" | "ocr" | "result";
 type DocumentType = "delivery_note" | "invoice";
@@ -20,6 +20,8 @@ type DocumentRecord = {
   document_type: DocumentType;
   original_filename: string;
   status: string;
+  created_at?: string | null;
+  updated_at?: string | null;
   ocr_data: ExtractedDocument | null;
 };
 
@@ -44,6 +46,8 @@ type ExtractedItem = ExtractedDocument["items"][number];
 type MatchingResult = {
   matching_id: string;
   status: "matched" | "review_required" | "approved" | "held" | "rejected";
+  delivery_document_id: string;
+  invoice_document_id: string;
   summary: Record<string, number>;
   line_comparisons: Array<{
     delivery_item: ExtractedDocument["items"][number] | null;
@@ -56,6 +60,18 @@ type MatchingResult = {
       status: "matched" | "different" | "name_check_required" | "tax_adjusted_match";
     }>;
   }>;
+};
+
+type MatchingRunSummary = {
+  matching_id: string;
+  status: MatchingResult["status"];
+  delivery_document_id: string;
+  invoice_document_id: string;
+  delivery_filename: string | null;
+  invoice_filename: string | null;
+  summary: Record<string, number>;
+  created_at?: string | null;
+  updated_at?: string | null;
 };
 
 type OcrStatus = {
@@ -73,6 +89,9 @@ const ACCEPTED_DOCUMENT_TYPES = ".pdf,.png,.jpg,.jpeg,.webp,.tif,.tiff,.heic,.he
 const ACCEPTED_DOCUMENT_TYPES_LABEL = "PDF / 画像 / Excel / CSV";
 
 const statusLabel: Record<string, string> = {
+  uploaded: "アップロード済み",
+  ocr_review: "OCR確認中",
+  reviewed: "確認済み",
   matched: "一致",
   different: "差異あり",
   name_check_required: "品名確認",
@@ -92,6 +111,11 @@ const fieldLabel: Record<string, string> = {
   amount: "金額",
   tax_rate: "税率",
   line_item: "明細",
+};
+
+const documentTypeLabel: Record<DocumentType, string> = {
+  delivery_note: "納品書",
+  invoice: "請求書",
 };
 
 function formatDifference(field: string, deliveryValue: string | null, invoiceValue: string | null, status?: string) {
@@ -144,6 +168,18 @@ function fileExtension(filename: string) {
   return filename.split(".").pop()?.toLowerCase() ?? "";
 }
 
+function formatDateTime(value?: string | null) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return new Intl.DateTimeFormat("ja-JP", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
 export default function Home() {
   const [screen, setScreen] = useState<Screen>("dashboard");
   const [userEmail, setUserEmail] = useState("demo@evident-ai.local");
@@ -154,13 +190,15 @@ export default function Home() {
   const [deliveryJson, setDeliveryJson] = useState("");
   const [invoiceJson, setInvoiceJson] = useState("");
   const [matchingResult, setMatchingResult] = useState<MatchingResult | null>(null);
+  const [recentDocuments, setRecentDocuments] = useState<DocumentRecord[]>([]);
+  const [matchingHistory, setMatchingHistory] = useState<MatchingRunSummary[]>([]);
   const [ocrStatus, setOcrStatus] = useState<OcrStatus | null>(null);
   const [ocrProgress, setOcrProgress] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const canReview = Boolean(deliveryDocument?.ocr_data && invoiceDocument?.ocr_data);
   const canMatch = Boolean(deliveryDocument && invoiceDocument && deliveryJson && invoiceJson);
+  const reviewedDocumentCount = recentDocuments.filter((document) => document.ocr_data).length;
 
   const navItems = useMemo(
     () => [
@@ -172,14 +210,27 @@ export default function Home() {
     [],
   );
 
-  async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const request = useCallback(async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const response = await fetch(`${API_BASE}${path}`, init);
     if (!response.ok) {
       const body = await response.text();
       throw new Error(body || `Request failed: ${response.status}`);
     }
     return response.json();
-  }
+  }, []);
+
+  const refreshDashboardData = useCallback(async function refreshDashboardData() {
+    try {
+      const [documents, matchings] = await Promise.all([
+        request<DocumentRecord[]>("/documents?limit=12"),
+        request<MatchingRunSummary[]>("/matching?limit=8"),
+      ]);
+      setRecentDocuments(documents);
+      setMatchingHistory(matchings);
+    } catch {
+      // Keep the main workflow usable even if history loading fails.
+    }
+  }, [request]);
 
   useEffect(() => {
     try {
@@ -191,12 +242,51 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    refreshDashboardData();
+  }, [refreshDashboardData]);
+
+  useEffect(() => {
     if (screen !== "ocr") return;
     fetch(`${API_BASE}/ocr/status`)
       .then((response) => (response.ok ? response.json() : null))
       .then((data) => setOcrStatus(data as OcrStatus | null))
       .catch(() => setOcrStatus(null));
   }, [screen]);
+
+  function selectDocument(document: DocumentRecord) {
+    if (document.document_type === "delivery_note") {
+      setDeliveryDocument(document);
+      setDeliveryJson(document.ocr_data ? stringifyDocument(document.ocr_data) : "");
+    } else {
+      setInvoiceDocument(document);
+      setInvoiceJson(document.ocr_data ? stringifyDocument(document.ocr_data) : "");
+    }
+  }
+
+  async function openMatching(matchingId: string) {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await request<MatchingResult>(`/matching/${matchingId}`);
+      setMatchingResult(result);
+      const documents = recentDocuments.length ? recentDocuments : await request<DocumentRecord[]>("/documents?limit=50");
+      const delivery = documents.find((document) => document.id === result.delivery_document_id);
+      const invoice = documents.find((document) => document.id === result.invoice_document_id);
+      if (delivery) {
+        setDeliveryDocument(delivery);
+        setDeliveryJson(delivery.ocr_data ? stringifyDocument(delivery.ocr_data) : "");
+      }
+      if (invoice) {
+        setInvoiceDocument(invoice);
+        setInvoiceJson(invoice.ocr_data ? stringifyDocument(invoice.ocr_data) : "");
+      }
+      setScreen("result");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "突合履歴の読み込みに失敗しました。");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function uploadOne(documentType: DocumentType, file: File) {
     const form = new FormData();
@@ -222,6 +312,7 @@ export default function Home() {
       ]);
       setDeliveryDocument(delivery);
       setInvoiceDocument(invoice);
+      refreshDashboardData();
       setScreen("ocr");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "アップロードに失敗しました。");
@@ -247,6 +338,7 @@ export default function Home() {
       setInvoiceDocument(invoice);
       setInvoiceJson(JSON.stringify(invoice.ocr_data, null, 2));
       setOcrProgress("OCRが完了しました。抽出された明細を確認してください。");
+      refreshDashboardData();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "OCRに失敗しました。");
     } finally {
@@ -274,6 +366,7 @@ export default function Home() {
       ]);
       setDeliveryDocument(delivery);
       setInvoiceDocument(invoice);
+      refreshDashboardData();
       setScreen("result");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "レビュー保存に失敗しました。");
@@ -296,6 +389,7 @@ export default function Home() {
         }),
       });
       setMatchingResult(result);
+      refreshDashboardData();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "突合に失敗しました。");
     } finally {
@@ -310,6 +404,7 @@ export default function Home() {
     try {
       const result = await request<MatchingResult>(`/matching/${matchingResult.matching_id}/${action}`, { method: "POST" });
       setMatchingResult(result);
+      refreshDashboardData();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "ステータス更新に失敗しました。");
     } finally {
@@ -357,14 +452,46 @@ export default function Home() {
                 <p className="mt-1 text-sm text-zinc-600">納品書と請求書のアップロードから突合結果の承認まで進めます。</p>
               </div>
               <div className="grid gap-4 md:grid-cols-3">
-                <Metric label="アップロード済み書類" value={(deliveryDocument ? 1 : 0) + (invoiceDocument ? 1 : 0)} />
-                <Metric label="OCR確認済み" value={canReview ? 2 : 0} />
+                <Metric label="保存済み書類" value={recentDocuments.length} />
+                <Metric label="OCR確認済み" value={reviewedDocumentCount} />
                 <Metric label="直近の突合" value={matchingResult ? statusLabel[matchingResult.status] : "未実行"} />
               </div>
-              <button className="inline-flex h-11 w-fit items-center gap-2 rounded-md bg-teal-700 px-4 font-bold text-white" onClick={() => setScreen("upload")}>
-                <FileUp size={18} />
-                アップロードを開始
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button className="inline-flex h-11 w-fit items-center gap-2 rounded-md bg-teal-700 px-4 font-bold text-white" onClick={() => setScreen("upload")}>
+                  <FileUp size={18} />
+                  アップロードを開始
+                </button>
+                <button className="inline-flex h-11 w-fit items-center gap-2 rounded-md border border-line bg-white px-4 font-bold" onClick={refreshDashboardData}>
+                  最新の状態に更新
+                </button>
+              </div>
+              <div className="grid gap-4 xl:grid-cols-2">
+                <DocumentHistory documents={recentDocuments} selectedDeliveryId={deliveryDocument?.id} selectedInvoiceId={invoiceDocument?.id} onSelect={selectDocument} />
+                <MatchingHistory matchings={matchingHistory} onOpen={openMatching} />
+              </div>
+              {deliveryDocument || invoiceDocument ? (
+                <div className="rounded-lg border border-line bg-white p-4">
+                  <h3 className="text-sm font-bold text-zinc-700">現在選択中の書類</h3>
+                  <div className="mt-3 grid gap-2 text-sm md:grid-cols-2">
+                    <div>
+                      <span className="font-bold">納品書: </span>
+                      {deliveryDocument?.original_filename ?? "未選択"}
+                    </div>
+                    <div>
+                      <span className="font-bold">請求書: </span>
+                      {invoiceDocument?.original_filename ?? "未選択"}
+                    </div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button className="h-10 rounded-md border border-line bg-white px-4 text-sm font-bold disabled:text-zinc-400" disabled={!deliveryDocument || !invoiceDocument} onClick={() => setScreen("ocr")}>
+                      OCR確認へ進む
+                    </button>
+                    <button className="h-10 rounded-md border border-line bg-white px-4 text-sm font-bold disabled:text-zinc-400" disabled={!deliveryDocument || !invoiceDocument} onClick={() => setScreen("result")}>
+                      突合結果へ進む
+                    </button>
+                  </div>
+                </div>
+              ) : null}
             </div>
           ) : null}
 
@@ -484,6 +611,85 @@ function Metric({ label, value }: { label: string; value: string | number }) {
       <div className="text-sm font-semibold text-zinc-500">{label}</div>
       <div className="mt-2 text-2xl font-bold">{value}</div>
     </div>
+  );
+}
+
+function DocumentHistory({
+  documents,
+  selectedDeliveryId,
+  selectedInvoiceId,
+  onSelect,
+}: {
+  documents: DocumentRecord[];
+  selectedDeliveryId?: string;
+  selectedInvoiceId?: string;
+  onSelect: (document: DocumentRecord) => void;
+}) {
+  return (
+    <section className="rounded-lg border border-line bg-white p-4">
+      <h3 className="text-sm font-bold text-zinc-700">最近の書類</h3>
+      <div className="mt-3 grid gap-2">
+        {documents.length ? (
+          documents.map((document) => {
+            const selected = document.id === selectedDeliveryId || document.id === selectedInvoiceId;
+            return (
+              <div className="grid gap-2 rounded-md border border-line p-3" key={document.id}>
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <div className="text-sm font-bold">{document.original_filename}</div>
+                    <div className="mt-1 text-xs text-zinc-500">
+                      {documentTypeLabel[document.document_type]} / {statusLabel[document.status] ?? document.status} / {formatDateTime(document.created_at)}
+                    </div>
+                  </div>
+                  <span className={`rounded-full px-2 py-1 text-xs font-bold ${selected ? "bg-teal-50 text-teal-700" : "bg-zinc-100 text-zinc-600"}`}>
+                    {selected ? "選択中" : document.ocr_data ? "OCR済み" : "未OCR"}
+                  </span>
+                </div>
+                <button className="h-9 w-fit rounded-md border border-line bg-white px-3 text-sm font-bold" type="button" onClick={() => onSelect(document)}>
+                  この書類を選択
+                </button>
+              </div>
+            );
+          })
+        ) : (
+          <div className="rounded-md bg-zinc-50 p-4 text-sm text-zinc-600">保存済みの書類はまだありません。</div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function MatchingHistory({ matchings, onOpen }: { matchings: MatchingRunSummary[]; onOpen: (matchingId: string) => void }) {
+  return (
+    <section className="rounded-lg border border-line bg-white p-4">
+      <h3 className="text-sm font-bold text-zinc-700">突合履歴</h3>
+      <div className="mt-3 grid gap-2">
+        {matchings.length ? (
+          matchings.map((matching) => (
+            <div className="grid gap-2 rounded-md border border-line p-3" key={matching.matching_id}>
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <div className="text-sm font-bold">{statusLabel[matching.status]}</div>
+                  <div className="mt-1 text-xs text-zinc-500">{formatDateTime(matching.created_at)}</div>
+                </div>
+                <div className="text-right text-xs text-zinc-600">
+                  差異 {matching.summary.different ?? 0} / 不足 {(matching.summary.missing_invoice_item ?? 0) + (matching.summary.missing_delivery_item ?? 0)}
+                </div>
+              </div>
+              <div className="grid gap-1 text-xs text-zinc-600">
+                <div>納品書: {matching.delivery_filename ?? matching.delivery_document_id}</div>
+                <div>請求書: {matching.invoice_filename ?? matching.invoice_document_id}</div>
+              </div>
+              <button className="h-9 w-fit rounded-md border border-line bg-white px-3 text-sm font-bold" type="button" onClick={() => onOpen(matching.matching_id)}>
+                結果を開く
+              </button>
+            </div>
+          ))
+        ) : (
+          <div className="rounded-md bg-zinc-50 p-4 text-sm text-zinc-600">突合履歴はまだありません。</div>
+        )}
+      </div>
+    </section>
   );
 }
 

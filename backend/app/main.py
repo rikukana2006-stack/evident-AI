@@ -18,10 +18,11 @@ from app.schemas import (
     DocumentType,
     DocumentUpdateRequest,
     ExtractedDocument,
+    MatchingRunSummary,
     MatchingResult,
     MatchingRunRequest,
 )
-from app.storage import save_upload
+from app.storage import normalize_upload_filename, save_upload
 from app.storage import UnsupportedFileTypeError
 
 
@@ -55,8 +56,10 @@ def serialize_document(document: Document) -> DocumentResponse:
     return DocumentResponse(
         id=document.id,
         document_type=document.document_type,
-        original_filename=document.original_filename,
+        original_filename=normalize_upload_filename(document.original_filename, document.original_filename),
         status=document.status,
+        created_at=document.created_at,
+        updated_at=document.updated_at,
         ocr_data=ocr_data,
     )
 
@@ -75,6 +78,23 @@ def get_matching_or_404(db: Session, matching_id: str) -> MatchingRun:
     return matching
 
 
+def serialize_matching_summary(matching: MatchingRun, db: Session) -> MatchingRunSummary:
+    delivery = db.get(Document, matching.delivery_document_id)
+    invoice = db.get(Document, matching.invoice_document_id)
+    result = MatchingResult.model_validate(matching.result)
+    return MatchingRunSummary(
+        matching_id=matching.id,
+        status=matching.status,
+        delivery_document_id=matching.delivery_document_id,
+        invoice_document_id=matching.invoice_document_id,
+        delivery_filename=normalize_upload_filename(delivery.original_filename, delivery.original_filename) if delivery else None,
+        invoice_filename=normalize_upload_filename(invoice.original_filename, invoice.original_filename) if invoice else None,
+        summary=result.summary,
+        created_at=matching.created_at,
+        updated_at=matching.updated_at,
+    )
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -83,6 +103,12 @@ def health() -> dict[str, str]:
 @app.get("/documents/accepted-file-types")
 def accepted_file_types() -> dict[str, str]:
     return {"accepted_file_types": ALLOWED_FILE_TYPES_LABEL}
+
+
+@app.get("/documents", response_model=list[DocumentResponse])
+def list_documents(db: Session = Depends(get_db), limit: int = 20) -> list[DocumentResponse]:
+    documents = db.query(Document).order_by(Document.created_at.desc()).limit(min(limit, 100)).all()
+    return [serialize_document(document) for document in documents]
 
 
 @app.get("/ocr/status")
@@ -179,6 +205,12 @@ def run_matching(payload: MatchingRunRequest, db: Session = Depends(get_db)) -> 
     db.refresh(matching)
     result.matching_id = matching.id
     return result
+
+
+@app.get("/matching", response_model=list[MatchingRunSummary])
+def list_matchings(db: Session = Depends(get_db), limit: int = 20) -> list[MatchingRunSummary]:
+    matchings = db.query(MatchingRun).order_by(MatchingRun.created_at.desc()).limit(min(limit, 100)).all()
+    return [serialize_matching_summary(matching, db) for matching in matchings]
 
 
 @app.get("/matching/{matching_id}", response_model=MatchingResult)

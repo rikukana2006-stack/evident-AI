@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.config import settings
 from app.database import Base, get_db
 from app.main import app
+from app.storage import normalize_upload_filename
 
 
 @pytest.fixture()
@@ -70,6 +71,10 @@ def test_api_flow_from_csv_upload_to_csv_export(client: TestClient) -> None:
     delivery = upload_csv(client, "delivery_note", "delivery.csv", delivery_csv)
     invoice = upload_csv(client, "invoice", "invoice.csv", invoice_csv)
 
+    documents_response = client.get("/documents")
+    assert documents_response.status_code == 200
+    assert len(documents_response.json()) >= 2
+
     delivery_file = client.get(f"/documents/{delivery['id']}/file")
     assert delivery_file.status_code == 200
     assert delivery_file.content.startswith(b"\xef\xbb\xbfitem_name")
@@ -102,6 +107,10 @@ def test_api_flow_from_csv_upload_to_csv_export(client: TestClient) -> None:
     assert matching_body["summary"]["different"] == 1
 
     matching_id = matching_body["matching_id"]
+    matching_history = client.get("/matching")
+    assert matching_history.status_code == 200
+    assert matching_history.json()[0]["matching_id"] == matching_id
+
     assert client.post(f"/matching/{matching_id}/hold").json()["status"] == "held"
     assert client.post(f"/matching/{matching_id}/approve").json()["status"] == "approved"
     assert client.post(f"/matching/{matching_id}/reject").json()["status"] == "rejected"
@@ -122,3 +131,20 @@ def test_api_rejects_unsupported_upload(client: TestClient) -> None:
 
     assert response.status_code == 400
     assert "Unsupported file type" in response.json()["detail"]
+
+
+def test_upload_keeps_japanese_filename(client: TestClient) -> None:
+    response = client.post(
+        "/documents/upload",
+        data={"document_type": "delivery_note"},
+        files={"file": ("水野納品書.csv", "item_name,quantity,unit_price,amount,tax_rate\nパン,1,100,100,10\n".encode("utf-8-sig"), "text/csv")},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["original_filename"] == "水野納品書.csv"
+
+
+def test_normalize_upload_filename_recovers_mojibake() -> None:
+    mojibake = "水野納品書.csv".encode("utf-8").decode("latin-1")
+
+    assert normalize_upload_filename(mojibake, "fallback.csv") == "水野納品書.csv"

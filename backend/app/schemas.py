@@ -1,4 +1,5 @@
 from decimal import Decimal
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -30,6 +31,8 @@ class DocumentResponse(BaseModel):
     document_type: str
     original_filename: str
     status: str
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
     ocr_data: ExtractedDocument | None = None
 
 
@@ -63,3 +66,15 @@ class MatchingResult(BaseModel):
     invoice_document_id: str
     line_comparisons: list[LineComparison]
     summary: dict[str, int]
+
+
+class MatchingRunSummary(BaseModel):
+    matching_id: str
+    status: Literal["matched", "review_required", "approved", "held", "rejected"]
+    delivery_document_id: str
+    invoice_document_id: str
+    delivery_filename: str | None = None
+    invoice_filename: str | None = None
+    summary: dict[str, int]
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
