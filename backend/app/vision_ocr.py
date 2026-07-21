@@ -203,6 +203,39 @@ def parse_number(value: object, default: int = 0) -> float | int:
     return int(number) if number.is_integer() else number
 
 
+NON_ITEM_TEXT_PATTERNS = (
+    "御振込",
+    "お振込",
+    "振込",
+    "銀行",
+    "支店",
+    "口座",
+    "当座",
+    "普通",
+    "下記",
+    "請求書",
+    "納品書",
+    "合計",
+    "消費税",
+    "軽減税",
+    "前回",
+    "今回",
+    "差引",
+    "毎度",
+    "お問",
+    "TEL",
+    "FAX",
+    "登録番号",
+    "伝票番号",
+    "商品コード",
+)
+
+
+def is_non_item_text(text: str) -> bool:
+    compact = re.sub(r"\s+", "", text)
+    return any(pattern in compact for pattern in NON_ITEM_TEXT_PATTERNS)
+
+
 def parse_ocr_text_rows(text: str) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     for raw_line in text.splitlines():
@@ -219,6 +252,9 @@ def parse_ocr_text_rows(text: str) -> list[dict[str, object]]:
 
         if len(numeric_values) < 3 or not parts:
             continue
+        item_name = " ".join(parts)
+        if is_non_item_text(item_name):
+            continue
 
         if len(numeric_values) == 4:
             quantity, unit_price, amount, tax_rate = numeric_values
@@ -227,7 +263,7 @@ def parse_ocr_text_rows(text: str) -> list[dict[str, object]]:
             tax_rate = "10"
         rows.append(
             {
-                "item_name": " ".join(parts),
+                "item_name": item_name,
                 "quantity": parse_number(quantity),
                 "unit_price": parse_number(unit_price),
                 "amount": parse_number(amount),
@@ -270,32 +306,6 @@ def parse_paddle_token_rows(text_lines: list[str]) -> list[dict[str, object]]:
     amount_candidates: list[int] = []
     quantity = 1
     tax_rate = 10
-    excluded_patterns = (
-        "TEL",
-        "No",
-        "コード",
-        "合計",
-        "消費税",
-        "税",
-        "銀行",
-        "支店",
-        "営業",
-        "会社",
-        "本社",
-        "当座",
-        "前回",
-        "今回",
-        "請求",
-        "納品",
-        "毎度",
-        "下記",
-        "お問",
-        "日付",
-        "伝票",
-        "商品",
-        "差引",
-    )
-
     for line in text_lines:
         text = str(line).strip()
         if not text:
@@ -310,9 +320,8 @@ def parse_paddle_token_rows(text_lines: list[str]) -> list[dict[str, object]]:
             amount_candidates.append(number)
 
         has_japanese = re.search(r"[ぁ-んァ-ン一-龥]", text) is not None
-        has_excluded = any(pattern in text for pattern in excluded_patterns)
         is_numeric_like = re.fullmatch(r"[\d\s,，.．円¥￥-]+", text) is not None
-        if has_japanese and not has_excluded and not is_numeric_like and 3 <= len(text) <= 30:
+        if has_japanese and not is_non_item_text(text) and not is_numeric_like and 3 <= len(text) <= 30:
             product_candidates.append(text)
 
     if not product_candidates or not amount_candidates:
@@ -479,7 +488,7 @@ def parse_paddle_position_row(row: list[dict[str, object]]) -> dict[str, object]
             amount = parse_paddle_number(text)
 
     item_name = " ".join(item_parts).strip()
-    if not item_name or amount <= 0:
+    if not item_name or is_non_item_text(item_name) or amount <= 0:
         return None
     if unit_price <= 0:
         unit_price = amount
@@ -496,7 +505,7 @@ def parse_paddle_position_row(row: list[dict[str, object]]) -> dict[str, object]
 def is_likely_item_text(text: str) -> bool:
     if not re.search(r"[ぁ-んァ-ン一-龥]", text):
         return False
-    if any(keyword in text for keyword in ("消費税", "ショウヒ", "ゼイ", "合計", "備考", "コード", "TEL", "問合")):
+    if is_non_item_text(text) or any(keyword in text for keyword in ("ショウヒ", "ゼイ", "備考")):
         return False
     return len(text) >= 3
 

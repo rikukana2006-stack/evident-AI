@@ -256,6 +256,15 @@ def test_parse_ocr_text_rows_from_paddle_text_lines() -> None:
     ]
 
 
+def test_parse_ocr_text_rows_filters_bank_transfer_lines() -> None:
+    rows = parse_ocr_text_rows(
+        "第四北越銀行神田中央当 下記銀行に御振込み下さい。 54900 5490 60390\n"
+        "半透明 10×50袋 1 6400 6400"
+    )
+
+    assert [row["item_name"] for row in rows] == ["半透明 10×50袋"]
+
+
 def test_parse_paddle_token_rows_estimates_line_from_ocr_cells() -> None:
     rows = parse_paddle_token_rows(
         [
@@ -279,6 +288,19 @@ def test_parse_paddle_token_rows_estimates_line_from_ocr_cells() -> None:
             "tax_rate": 10,
         }
     ]
+
+
+def test_parse_paddle_token_rows_ignores_bank_transfer_text() -> None:
+    rows = parse_paddle_token_rows(
+        [
+            "第四北越銀行神田中央当 下記銀行に御振込み下さい。",
+            "54,900",
+            "5,490",
+            "60,390",
+        ]
+    )
+
+    assert rows == []
 
 
 def test_parse_paddle_position_rows_uses_table_columns() -> None:

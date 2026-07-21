@@ -923,6 +923,7 @@ function OcrNote({ title, provider, note }: { title: string; provider?: string |
 
 function ResultRow({ line }: { line: MatchingResult["line_comparisons"][number] }) {
   const title = line.delivery_item?.item_name ?? line.invoice_item?.item_name ?? "明細";
+  const isMissingLine = line.status === "missing_invoice_item" || line.status === "missing_delivery_item";
   const badgeClass =
     line.status === "matched"
       ? "bg-emerald-50 text-emerald-700"
@@ -948,6 +949,12 @@ function ResultRow({ line }: { line: MatchingResult["line_comparisons"][number] 
           <div className="mt-1 text-sm text-zinc-600">{lineTotal(line, "invoice_item")}</div>
         </div>
       </div>
+      {isMissingLine ? (
+        <div className="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
+          {line.status === "missing_delivery_item" ? "請求書にだけ存在する明細です。" : "納品書にだけ存在する明細です。"}
+        </div>
+      ) : null}
+      {isMissingLine ? null : (
       <div className="mt-4 overflow-x-auto">
         <table className="w-full min-w-[640px] border-collapse text-sm">
           <thead>
@@ -980,6 +987,7 @@ function ResultRow({ line }: { line: MatchingResult["line_comparisons"][number] 
           </tbody>
         </table>
       </div>
+      )}
     </article>
   );
 }
