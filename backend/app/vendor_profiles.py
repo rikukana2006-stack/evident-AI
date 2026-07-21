@@ -24,6 +24,27 @@ GENERIC_PROFILE = VendorProfile(
 
 VENDOR_PROFILES = (
     VendorProfile(
+        profile_id="mizuno_sangyo",
+        display_name="水野産業",
+        aliases=("水野産業", "水野請求書", "水野納品書", "mizuno"),
+        layout_profile_name="水野産業 標準明細レイアウト",
+        minimum_expected_items=1,
+    ),
+    VendorProfile(
+        profile_id="sato_kyozai",
+        display_name="サトウ教材",
+        aliases=("サトウ教材", "サトウ", "sato"),
+        layout_profile_name="サトウ教材 標準明細レイアウト",
+        minimum_expected_items=3,
+    ),
+    VendorProfile(
+        profile_id="healthy_food",
+        display_name="ヘルシーフード",
+        aliases=("ヘルシーフード", "healthy food", "healthyfood"),
+        layout_profile_name="ヘルシーフード 標準明細レイアウト",
+        minimum_expected_items=5,
+    ),
+    VendorProfile(
         profile_id="shimakyu",
         display_name="シマキュウ",
         aliases=("シマキュウ", "ｼﾏｷｭｳ", "シマキュー", "shimakyu"),

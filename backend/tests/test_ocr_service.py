@@ -11,7 +11,9 @@ from app.ocr_service import parse_pdf_document, parse_pdf_text_rows, parse_csv_d
 from app.vision_ocr import (
     parse_ocr_text_rows,
     extract_paddle_cells,
+    normalize_paddle_line_numbers,
     parse_openai_ocr_response,
+    parse_paddle_number,
     parse_paddle_position_row,
     parse_paddle_position_rows,
     parse_paddle_token_rows,
@@ -132,6 +134,41 @@ def test_run_ocr_marks_unknown_vendor_as_generic(tmp_path: Path) -> None:
     assert document.vendor_profile_id == "generic"
     assert document.layout_profile_name == "\u6c4e\u7528OCR\u30ec\u30a4\u30a2\u30a6\u30c8"
     assert document.ocr_warnings
+
+
+@pytest.mark.parametrize(
+    ("filename", "expected_profile"),
+    [
+        ("\u6c34\u91ce\u8acb\u6c42\u66f8.pdf", "mizuno_sangyo"),
+        ("\u30b5\u30c8\u30a6\u6559\u6750\u7d0d\u54c1\u66f8.pdf", "sato_kyozai"),
+        ("\u30d8\u30eb\u30b7\u30fc\u30d5\u30fc\u30c9\u8acb\u6c42\u66f8.pdf", "healthy_food"),
+    ],
+)
+def test_run_ocr_assigns_new_sample_vendor_profiles(tmp_path: Path, filename: str, expected_profile: str) -> None:
+    csv_path = tmp_path / filename
+    csv_path.write_text(
+        "item_name,quantity,unit_price,amount,tax_rate\n"
+        "\u30c6\u30b9\u30c8\u5546\u54c1,1,100,100,10\n",
+        encoding="utf-8-sig",
+    )
+
+    document = run_ocr("invoice", csv_path.name, str(csv_path))
+
+    assert document.vendor_profile_id == expected_profile
+    assert document.ocr_confidence > 0
+
+
+def test_parse_paddle_number_strips_decimal_zero_suffix() -> None:
+    assert parse_paddle_number("3,240.00") == 3240
+    assert parse_paddle_number("180,00") == 180
+
+
+def test_normalize_paddle_line_numbers_repairs_decimal_suffix_ocr_errors() -> None:
+    assert normalize_paddle_line_numbers(1, 324000, 324000) == (1, 3240, 3240)
+    assert normalize_paddle_line_numbers(1, 3240000, 3240) == (1, 3240, 3240)
+    assert normalize_paddle_line_numbers(500, 112700, 5635) == (5, 1127, 5635)
+    assert normalize_paddle_line_numbers(0, 550, 4400) == (8, 550, 4400)
+    assert normalize_paddle_line_numbers(150, 3144, 3144) == (1, 3144, 3144)
 
 
 def test_parse_xlsx_document_with_japanese_headers(tmp_path: Path) -> None:

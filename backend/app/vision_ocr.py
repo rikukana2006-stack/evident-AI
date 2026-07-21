@@ -235,6 +235,18 @@ NON_ITEM_TEXT_PATTERNS = (
     "伝票番号",
     "商品コード",
     "内訳",
+    "備考",
+    "摘要",
+    "税抜",
+    "税込",
+    "税額",
+    "本体",
+    "当月",
+    "御買上",
+    "御請求",
+    "得意先合計",
+    "納品先合計",
+    "滴要",
 )
 
 
@@ -420,12 +432,19 @@ def parse_paddle_position_rows(cells: list[dict[str, object]]) -> list[dict[str,
     if len(cells_by_page) > 1:
         parsed_rows: list[dict[str, object]] = []
         for page_index in sorted(cells_by_page):
-            rows = group_cells_by_y(cells_by_page[page_index])
+            page_cells = cells_by_page[page_index]
+            page_width = max(float(cell["x2"]) for cell in page_cells)
+            for cell in page_cells:
+                cell["page_width"] = page_width
+            rows = group_cells_by_y(page_cells)
             header_row = find_paddle_table_header_row(rows)
             header_y = max(float(cell["cy"]) for cell in header_row) if header_row is not None else None
             parsed_rows.extend(parse_paddle_position_rows_from_grouped_rows(rows, header_y))
         return parsed_rows
 
+    page_width = max(float(cell["x2"]) for cell in cells)
+    for cell in cells:
+        cell["page_width"] = page_width
     rows = group_cells_by_y(cells)
     header_row = find_paddle_table_header_row(rows)
     header_y = max(float(cell["cy"]) for cell in header_row) if header_row is not None else None
@@ -480,19 +499,26 @@ def parse_paddle_position_row(row: list[dict[str, object]]) -> dict[str, object]
     quantity = 1
     unit_price = 0
     amount = 0
+    tax_rate = 10
+    page_width = max(float(cell.get("page_width") or cell["x2"]) for cell in row)
+    row_text = " ".join(str(cell["text"]) for cell in row)
+    if "8%" in row_text or "8％" in row_text or "★" in row_text or "食料品" in row_text:
+        tax_rate = 8
 
     for cell in row:
         text = str(cell["text"]).strip()
         x1 = float(cell["x1"])
         cx = float(cell["cx"])
+        rx1 = x1 / page_width if page_width else 0
+        rcx = cx / page_width if page_width else 0
 
-        if 100 <= x1 <= 760 and is_likely_item_fragment(text):
+        if 0.06 <= rx1 <= 0.62 and is_likely_item_fragment(text):
             item_parts.append(text)
-        elif 760 <= cx <= 960 and re.search(r"\d", text):
+        elif 0.48 <= rcx <= 0.72 and re.search(r"\d", text):
             quantity = parse_paddle_quantity(text)
-        elif 980 <= cx < 1165:
+        elif 0.68 <= rcx < 0.84:
             unit_price = parse_paddle_unit_price(text)
-        elif 1165 <= cx <= 1600 and "%" not in text and "％" not in text:
+        elif 0.78 <= rcx <= 0.98 and "%" not in text and "％" not in text:
             amount_candidates.append((cx, parse_paddle_number(text)))
 
     item_name = " ".join(item_parts).strip()
@@ -503,14 +529,45 @@ def parse_paddle_position_row(row: list[dict[str, object]]) -> dict[str, object]
         return None
     if unit_price <= 0:
         unit_price = amount
+    quantity, unit_price, amount = normalize_paddle_line_numbers(quantity, unit_price, amount)
 
     return {
         "item_name": item_name,
         "quantity": quantity,
         "unit_price": unit_price,
         "amount": amount,
-        "tax_rate": 10,
+        "tax_rate": tax_rate,
     }
+
+
+def normalize_paddle_line_numbers(quantity: int, unit_price: int, amount: int) -> tuple[int, int, int]:
+    # OCR often reads a printed decimal suffix such as "3,240.00" as "324000".
+    # Reconcile obvious x100 errors by checking the business equation:
+    # quantity * unit_price == amount.
+    if quantity <= 0 and unit_price > 0 and amount % unit_price == 0:
+        quantity = amount // unit_price
+
+    if quantity >= 100 and quantity % 100 == 0 and unit_price >= 10_000 and unit_price % 100 == 0:
+        candidate_quantity = quantity // 100
+        candidate_unit_price = unit_price // 100
+        if candidate_quantity * candidate_unit_price == amount:
+            quantity = candidate_quantity
+            unit_price = candidate_unit_price
+
+    if unit_price >= 10_000 and unit_price % 100 == 0 and (unit_price // 100) * quantity == amount:
+        unit_price = unit_price // 100
+
+    if amount >= 100_000 and amount % 100 == 0 and unit_price == amount and quantity <= 10:
+        amount = amount // 100
+        unit_price = unit_price // 100
+
+    while quantity > 0 and unit_price >= 10 and unit_price * quantity >= amount * 10 and unit_price % 10 == 0:
+        unit_price = unit_price // 10
+
+    if quantity > 100 and amount > 0 and unit_price == amount:
+        quantity = 1
+
+    return quantity, unit_price, amount
 
 
 def is_likely_item_text(text: str) -> bool:
@@ -524,6 +581,10 @@ def is_likely_item_text(text: str) -> bool:
 def is_likely_item_fragment(text: str) -> bool:
     if is_non_item_text(text):
         return False
+    if text in {"月", "火", "水", "木", "金", "土", "日"}:
+        return False
+    if re.fullmatch(r"\d+\s*[x×X]?", text):
+        return False
     if re.fullmatch(r"[\d\s,，.．円¥￥%％/:-]+", text):
         return False
     if re.fullmatch(r"[x×X]?", text):
@@ -535,6 +596,9 @@ def is_likely_item_fragment(text: str) -> bool:
 
 def parse_paddle_number(text: str) -> int:
     normalized = text.replace("，", ",").replace("．", ".").strip()
+    decimal_match = re.fullmatch(r"([\d,]+)[\.,]00", normalized)
+    if decimal_match:
+        normalized = decimal_match.group(1)
     decimal_match = re.fullmatch(r"(\d{1,3}(?:,\d{3})+),00", normalized)
     if decimal_match:
         normalized = decimal_match.group(1)
@@ -558,6 +622,9 @@ def parse_paddle_quantity(text: str) -> int:
 
 def parse_paddle_unit_price(text: str) -> int:
     normalized = re.sub(r"\s+", "", text.replace("，", ",").replace("．", "."))
+    decimal_match = re.fullmatch(r"([\d,]+)[\.,]00", normalized)
+    if decimal_match:
+        normalized = decimal_match.group(1)
     comma_decimal = re.fullmatch(r"(\d{3,}),00", normalized)
     if comma_decimal:
         return int(comma_decimal.group(1))
