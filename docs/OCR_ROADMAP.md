@@ -7,7 +7,7 @@
 - Text PDF: text is extracted first, then simple table-like lines are parsed.
 - Scanned PDF: rendered to PNG pages under `storage/ocr_work`, then routed to the configured vision provider.
 - Phone photo / image upload: routed to the configured vision provider.
-- Multi-page scanned PDF: pages are OCRed separately and line items are aggregated into one reviewed document for the MVP.
+- Multi-page scanned PDF: pages are OCRed separately and line items are aggregated into one reviewed document for the MVP. Continuation pages without repeated table headers are also parsed when line-item columns can be inferred.
 - XLS: accepted for upload, but returns `spreadsheet:xls_unsupported` until a legacy Excel parser is added.
 - Manual line entry is an exception path only. The target workflow is automatic AI OCR extraction followed by review and correction.
 
@@ -68,7 +68,7 @@ cd backend
 EVIDENT_VISION_OCR_PROVIDER=paddle
 EVIDENT_PADDLE_OCR_LANG=japan
 EVIDENT_PADDLE_OCR_VERSION=PP-OCRv3
-EVIDENT_VISION_OCR_MAX_IMAGES=10
+EVIDENT_VISION_OCR_MAX_IMAGES=30
 ```
 
 PaddleOCR avoids per-page API charges, but it runs on the server and may require more CPU/RAM than the stub or OpenAI provider. It performs text recognition locally, then Evident AI attempts to structure recognized lines into item name, quantity, unit price, amount, and tax rate.

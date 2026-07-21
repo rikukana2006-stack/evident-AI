@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     vision_ocr_provider: str = "stub"
     openai_api_key: str | None = None
     openai_vision_model: str = "gpt-4.1-mini"
-    vision_ocr_max_images: int = 10
+    vision_ocr_max_images: int = 30
     paddle_ocr_lang: str = "japan"
     paddle_ocr_version: str = "PP-OCRv3"
     paddle_cache_dir: Path | None = None

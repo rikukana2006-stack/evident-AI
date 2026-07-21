@@ -404,19 +404,25 @@ def parse_paddle_position_rows(cells: list[dict[str, object]]) -> list[dict[str,
     if len(cells_by_page) > 1:
         parsed_rows: list[dict[str, object]] = []
         for page_index in sorted(cells_by_page):
-            parsed_rows.extend(parse_paddle_position_rows(cells_by_page[page_index]))
+            rows = group_cells_by_y(cells_by_page[page_index])
+            header_row = find_paddle_table_header_row(rows)
+            header_y = max(float(cell["cy"]) for cell in header_row) if header_row is not None else None
+            parsed_rows.extend(parse_paddle_position_rows_from_grouped_rows(rows, header_y))
         return parsed_rows
 
     rows = group_cells_by_y(cells)
     header_row = find_paddle_table_header_row(rows)
-    if header_row is None:
-        return []
+    header_y = max(float(cell["cy"]) for cell in header_row) if header_row is not None else None
+    return parse_paddle_position_rows_from_grouped_rows(rows, header_y)
 
-    header_y = max(float(cell["cy"]) for cell in header_row)
+
+def parse_paddle_position_rows_from_grouped_rows(rows: list[list[dict[str, object]]], header_y: float | None) -> list[dict[str, object]]:
     parsed_rows: list[dict[str, object]] = []
     for row in rows:
         row_y = sum(float(cell["cy"]) for cell in row) / len(row)
-        if row_y <= header_y + 25 or row_y > header_y + 450:
+        if header_y is not None and row_y <= header_y + 25:
+            continue
+        if header_y is None and row_y < 120:
             continue
 
         parsed = parse_paddle_position_row(row)

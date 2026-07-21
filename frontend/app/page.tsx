@@ -717,6 +717,7 @@ function OcrStatusBanner({ status }: { status: OcrStatus | null }) {
       <div className="mt-1">
         OCR方式: <span className="font-mono">{status.vision_ocr_provider}</span> / モデル: <span className="font-mono">{model}</span> / APIキー:{" "}
         {status.openai_api_key_configured ? "設定済み" : "未設定"}
+        <> / 最大OCRページ数: <span className="font-mono">{status.vision_ocr_max_images}</span></>
         {status.paddle_cache_dir ? <> / キャッシュ: <span className="font-mono">{status.paddle_cache_dir}</span></> : null}
       </div>
     </div>

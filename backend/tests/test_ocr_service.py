@@ -334,6 +334,52 @@ def test_parse_paddle_position_rows_keeps_pages_separate() -> None:
     assert [row["amount"] for row in rows] == [3360, 1200]
 
 
+def test_parse_paddle_position_rows_keeps_headerless_continuation_pages() -> None:
+    header = [
+        {"page_index": 1, "text": "\u5546\u54c1\u30b3\u30fc\u30c9", "x1": 58, "y1": 535, "x2": 207, "y2": 563, "cx": 132.5, "cy": 549},
+        {"page_index": 1, "text": "\u54c1", "x1": 270, "y1": 532, "x2": 307, "y2": 568, "cx": 288.5, "cy": 550},
+        {"page_index": 1, "text": "\u540d\u30fb\u898f", "x1": 376, "y1": 534, "x2": 539, "y2": 565, "cx": 457.5, "cy": 549.5},
+        {"page_index": 1, "text": "\u7dcf\u6570\u91cf", "x1": 1041, "y1": 534, "x2": 1197, "y2": 562, "cx": 1119, "cy": 548},
+        {"page_index": 1, "text": "\u5358\u4fa1", "x1": 1264, "y1": 532, "x2": 1356, "y2": 564, "cx": 1310, "cy": 548},
+        {"page_index": 1, "text": "\u91d1\u984d", "x1": 1449, "y1": 530, "x2": 1544, "y2": 563, "cx": 1496.5, "cy": 546.5},
+    ]
+    first_page_item = [
+        {"page_index": 1, "text": "1\u00d7", "x1": 862, "y1": 583, "x2": 898, "y2": 612, "cx": 880, "cy": 597.5},
+        {"page_index": 1, "text": "\u75c5\u9662\u7528\u30cf\u30a4\u30bf\u30fc5k8", "x1": 232, "y1": 618, "x2": 500, "y2": 647, "cx": 366, "cy": 632.5},
+        {"page_index": 1, "text": "3,360", "x1": 1282, "y1": 616, "x2": 1396, "y2": 641, "cx": 1339, "cy": 628.5},
+        {"page_index": 1, "text": "3,360", "x1": 1520, "y1": 615, "x2": 1593, "y2": 640, "cx": 1556.5, "cy": 627.5},
+    ]
+    second_page_item_without_header = [
+        {"page_index": 2, "text": "2\u00d7", "x1": 862, "y1": 180, "x2": 898, "y2": 210, "cx": 880, "cy": 195},
+        {"page_index": 2, "text": "\u696d\u52d9\u7528\u6d17\u5264", "x1": 232, "y1": 215, "x2": 500, "y2": 245, "cx": 366, "cy": 230},
+        {"page_index": 2, "text": "1,200", "x1": 1282, "y1": 214, "x2": 1396, "y2": 242, "cx": 1339, "cy": 228},
+        {"page_index": 2, "text": "2,400", "x1": 1520, "y1": 214, "x2": 1593, "y2": 242, "cx": 1556.5, "cy": 228},
+    ]
+
+    rows = parse_paddle_position_rows(header + first_page_item + second_page_item_without_header)
+
+    assert [row["item_name"] for row in rows] == ["\u75c5\u9662\u7528\u30cf\u30a4\u30bf\u30fc5k8", "\u696d\u52d9\u7528\u6d17\u5264"]
+    assert [row["quantity"] for row in rows] == [1, 2]
+    assert [row["amount"] for row in rows] == [3360, 2400]
+
+
+def test_parse_paddle_position_rows_keeps_lower_page_items() -> None:
+    cells = [
+        {"page_index": 1, "text": "\u5546\u54c1\u30b3\u30fc\u30c9", "x1": 58, "y1": 535, "x2": 207, "y2": 563, "cx": 132.5, "cy": 549},
+        {"page_index": 1, "text": "\u54c1", "x1": 270, "y1": 532, "x2": 307, "y2": 568, "cx": 288.5, "cy": 550},
+        {"page_index": 1, "text": "\u540d\u30fb\u898f", "x1": 376, "y1": 534, "x2": 539, "y2": 565, "cx": 457.5, "cy": 549.5},
+        {"page_index": 1, "text": "\u7dcf\u6570\u91cf", "x1": 1041, "y1": 534, "x2": 1197, "y2": 562, "cx": 1119, "cy": 548},
+        {"page_index": 1, "text": "\u5358\u4fa1", "x1": 1264, "y1": 532, "x2": 1356, "y2": 564, "cx": 1310, "cy": 548},
+        {"page_index": 1, "text": "\u91d1\u984d", "x1": 1449, "y1": 530, "x2": 1544, "y2": 563, "cx": 1496.5, "cy": 546.5},
+        {"page_index": 1, "text": "1\u00d7", "x1": 862, "y1": 1080, "x2": 898, "y2": 1110, "cx": 880, "cy": 1095},
+        {"page_index": 1, "text": "\u4e0b\u6bb5\u306e\u5546\u54c1", "x1": 232, "y1": 1115, "x2": 500, "y2": 1145, "cx": 366, "cy": 1130},
+        {"page_index": 1, "text": "980", "x1": 1282, "y1": 1114, "x2": 1396, "y2": 1142, "cx": 1339, "cy": 1128},
+        {"page_index": 1, "text": "980", "x1": 1520, "y1": 1114, "x2": 1593, "y2": 1142, "cx": 1556.5, "cy": 1128},
+    ]
+
+    assert parse_paddle_position_rows(cells)[0]["item_name"] == "\u4e0b\u6bb5\u306e\u5546\u54c1"
+
+
 def test_extract_paddle_cells_handles_box_arrays_without_boolean_checks() -> None:
     class BoxArray:
         def __init__(self, values: list[list[int]]) -> None:
