@@ -12,6 +12,7 @@ from app.vision_ocr import (
     parse_ocr_text_rows,
     extract_paddle_cells,
     parse_openai_ocr_response,
+    parse_paddle_position_row,
     parse_paddle_position_rows,
     parse_paddle_token_rows,
     prepare_paddle_input_images,
@@ -259,6 +260,7 @@ def test_parse_ocr_text_rows_from_paddle_text_lines() -> None:
 def test_parse_ocr_text_rows_filters_bank_transfer_lines() -> None:
     rows = parse_ocr_text_rows(
         "第四北越銀行神田中央当 下記銀行に御振込み下さい。 54900 5490 60390\n"
+        "前月請求額 1 34100 34100\n"
         "半透明 10×50袋 1 6400 6400"
     )
 
@@ -332,6 +334,48 @@ def test_parse_paddle_position_rows_uses_table_columns() -> None:
     ]
 
 
+def test_parse_paddle_position_rows_handles_shimakyu_delivery_columns() -> None:
+    cells = [
+        {"text": "売上", "x1": 40, "y1": 420, "x2": 110, "y2": 445, "cx": 74, "cy": 431},
+        {"text": "HDホリ手袋", "x1": 130, "y1": 420, "x2": 250, "y2": 445, "cx": 188, "cy": 431},
+        {"text": "外エンボスＰＧＡーｏ２Ｍ", "x1": 310, "y1": 420, "x2": 600, "y2": 445, "cx": 451, "cy": 431},
+        {"text": "100,00", "x1": 820, "y1": 420, "x2": 910, "y2": 445, "cx": 868, "cy": 431},
+        {"text": "袋", "x1": 930, "y1": 420, "x2": 970, "y2": 445, "cx": 948, "cy": 432},
+        {"text": "180,00", "x1": 1080, "y1": 420, "x2": 1180, "y2": 445, "cx": 1129, "cy": 431},
+        {"text": "18,000", "x1": 1280, "y1": 420, "x2": 1390, "y2": 445, "cx": 1342, "cy": 432},
+        {"text": "10％", "x1": 1400, "y1": 420, "x2": 1460, "y2": 445, "cx": 1428, "cy": 432},
+    ]
+
+    assert parse_paddle_position_row(cells) == {
+        "item_name": "HDホリ手袋 外エンボスＰＧＡーｏ２Ｍ",
+        "quantity": 100,
+        "unit_price": 180,
+        "amount": 18000,
+        "tax_rate": 10,
+    }
+
+
+def test_parse_paddle_position_rows_handles_shimakyu_invoice_columns() -> None:
+    cells = [
+        {"text": "6/03", "x1": 60, "y1": 870, "x2": 120, "y2": 905, "cx": 91, "cy": 891},
+        {"text": "IDホリ手長外エンボス", "x1": 150, "y1": 870, "x2": 410, "y2": 905, "cx": 270, "cy": 889},
+        {"text": "PＧH-0?", "x1": 470, "y1": 870, "x2": 590, "y2": 905, "cx": 531, "cy": 889},
+        {"text": "M", "x1": 640, "y1": 870, "x2": 680, "y2": 905, "cx": 659, "cy": 889},
+        {"text": "100", "x1": 810, "y1": 870, "x2": 880, "y2": 905, "cx": 844, "cy": 888},
+        {"text": "180", "x1": 1000, "y1": 870, "x2": 1080, "y2": 905, "cx": 1038, "cy": 888},
+        {"text": "18000", "x1": 1130, "y1": 870, "x2": 1230, "y2": 905, "cx": 1179, "cy": 886},
+        {"text": "10％", "x1": 1300, "y1": 870, "x2": 1370, "y2": 905, "cx": 1337, "cy": 886},
+    ]
+
+    assert parse_paddle_position_row(cells) == {
+        "item_name": "IDホリ手長外エンボス PＧH-0? M",
+        "quantity": 100,
+        "unit_price": 180,
+        "amount": 18000,
+        "tax_rate": 10,
+    }
+
+
 def test_parse_paddle_position_rows_keeps_pages_separate() -> None:
     def page_cells(page_index: int, item_name: str, amount: str) -> list[dict[str, object]]:
         return [
@@ -372,7 +416,7 @@ def test_parse_paddle_position_rows_keeps_headerless_continuation_pages() -> Non
         {"page_index": 1, "text": "3,360", "x1": 1520, "y1": 615, "x2": 1593, "y2": 640, "cx": 1556.5, "cy": 627.5},
     ]
     second_page_item_without_header = [
-        {"page_index": 2, "text": "2\u00d7", "x1": 862, "y1": 180, "x2": 898, "y2": 210, "cx": 880, "cy": 195},
+        {"page_index": 2, "text": "2\u00d7", "x1": 862, "y1": 215, "x2": 898, "y2": 245, "cx": 880, "cy": 230},
         {"page_index": 2, "text": "\u696d\u52d9\u7528\u6d17\u5264", "x1": 232, "y1": 215, "x2": 500, "y2": 245, "cx": 366, "cy": 230},
         {"page_index": 2, "text": "1,200", "x1": 1282, "y1": 214, "x2": 1396, "y2": 242, "cx": 1339, "cy": 228},
         {"page_index": 2, "text": "2,400", "x1": 1520, "y1": 214, "x2": 1593, "y2": 242, "cx": 1556.5, "cy": 228},

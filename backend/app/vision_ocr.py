@@ -97,8 +97,13 @@ def get_paddle_ocr() -> Any:
 
 
 def prepare_paddle_input_images(image_paths: list[Path], cache_root: Path) -> list[Path]:
-    run_dir = cache_root / "input_images" / uuid4().hex
-    run_dir.mkdir(parents=True, exist_ok=True)
+    input_root = Path(tempfile.gettempdir()) / "evident_ai_paddle_input"
+    try:
+        input_root.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        input_root = cache_root / "input_images"
+        input_root.mkdir(parents=True, exist_ok=True)
+    run_dir = Path(tempfile.mkdtemp(prefix="ocr_", dir=str(input_root)))
 
     prepared_paths: list[Path] = []
     for index, image_path in enumerate(image_paths, start=1):
@@ -219,6 +224,7 @@ NON_ITEM_TEXT_PATTERNS = (
     "消費税",
     "軽減税",
     "前回",
+    "前月",
     "今回",
     "差引",
     "毎度",
@@ -228,6 +234,7 @@ NON_ITEM_TEXT_PATTERNS = (
     "登録番号",
     "伝票番号",
     "商品コード",
+    "内訳",
 )
 
 
@@ -441,7 +448,7 @@ def parse_paddle_position_rows_from_grouped_rows(rows: list[list[dict[str, objec
     return parsed_rows
 
 
-def group_cells_by_y(cells: list[dict[str, object]], tolerance: float = 48) -> list[list[dict[str, object]]]:
+def group_cells_by_y(cells: list[dict[str, object]], tolerance: float = 26) -> list[list[dict[str, object]]]:
     rows: list[list[dict[str, object]]] = []
     for cell in sorted(cells, key=lambda item: (float(item["cy"]), float(item["cx"]))):
         for row in rows:
@@ -469,6 +476,7 @@ def find_paddle_table_header_row(rows: list[list[dict[str, object]]]) -> list[di
 
 def parse_paddle_position_row(row: list[dict[str, object]]) -> dict[str, object] | None:
     item_parts: list[str] = []
+    amount_candidates: list[tuple[float, int]] = []
     quantity = 1
     unit_price = 0
     amount = 0
@@ -478,16 +486,19 @@ def parse_paddle_position_row(row: list[dict[str, object]]) -> dict[str, object]
         x1 = float(cell["x1"])
         cx = float(cell["cx"])
 
-        if 190 <= x1 <= 850 and is_likely_item_text(text):
+        if 100 <= x1 <= 760 and is_likely_item_fragment(text):
             item_parts.append(text)
-        elif 820 <= cx <= 1210 and re.fullmatch(r"\d+\s*[x×X]?", text):
-            quantity = parse_number(re.sub(r"\D", "", text), default=1)
-        elif 1180 <= cx <= 1425:
-            unit_price = parse_paddle_number(text)
-        elif cx >= 1425:
-            amount = parse_paddle_number(text)
+        elif 760 <= cx <= 960 and re.search(r"\d", text):
+            quantity = parse_paddle_quantity(text)
+        elif 980 <= cx < 1165:
+            unit_price = parse_paddle_unit_price(text)
+        elif 1165 <= cx <= 1600 and "%" not in text and "％" not in text:
+            amount_candidates.append((cx, parse_paddle_number(text)))
 
     item_name = " ".join(item_parts).strip()
+    amount_candidates = [(cx, value) for cx, value in amount_candidates if value > 0]
+    if amount_candidates:
+        amount = sorted(amount_candidates, key=lambda candidate: candidate[0])[-1][1]
     if not item_name or is_non_item_text(item_name) or amount <= 0:
         return None
     if unit_price <= 0:
@@ -510,6 +521,18 @@ def is_likely_item_text(text: str) -> bool:
     return len(text) >= 3
 
 
+def is_likely_item_fragment(text: str) -> bool:
+    if is_non_item_text(text):
+        return False
+    if re.fullmatch(r"[\d\s,，.．円¥￥%％/:-]+", text):
+        return False
+    if re.fullmatch(r"[x×X]?", text):
+        return False
+    if any(keyword in text for keyword in ("売上", "入金", "手数料", "小計", "ショウヒ", "ゼイ")):
+        return False
+    return len(text.strip()) >= 1
+
+
 def parse_paddle_number(text: str) -> int:
     normalized = text.replace("，", ",").replace("．", ".").strip()
     decimal_match = re.fullmatch(r"(\d{1,3}(?:,\d{3})+),00", normalized)
@@ -522,6 +545,24 @@ def parse_paddle_number(text: str) -> int:
         return int(digits)
     except ValueError:
         return 0
+
+
+def parse_paddle_quantity(text: str) -> int:
+    normalized = re.sub(r"\s+", "", text.replace("，", ",").replace("．", "."))
+    normalized = re.sub(r"[x×X]$", "", normalized)
+    if re.fullmatch(r"\d{1,3}(?:,\d{3})*[\.,]00", normalized):
+        normalized = normalized[:-3]
+    digits = re.sub(r"\D", "", normalized)
+    return int(digits) if digits else 1
+
+
+def parse_paddle_unit_price(text: str) -> int:
+    normalized = re.sub(r"\s+", "", text.replace("，", ",").replace("．", "."))
+    comma_decimal = re.fullmatch(r"(\d{3,}),00", normalized)
+    if comma_decimal:
+        return int(comma_decimal.group(1))
+    digits = re.sub(r"\D", "", normalized)
+    return int(digits) if digits else 0
 
 
 def select_likely_amount(numbers: list[int]) -> int:
@@ -585,8 +626,13 @@ def run_paddle_prediction(ocr: object, image_path: Path) -> object:
 
 
 def run_paddle_predictions_in_subprocess(image_paths: list[Path], cache_root: Path) -> list[object]:
-    job_dir = cache_root / "worker_jobs" / uuid4().hex
-    job_dir.mkdir(parents=True, exist_ok=True)
+    job_root = Path(tempfile.gettempdir()) / "evident_ai_paddle_jobs"
+    try:
+        job_root.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        job_root = cache_root / "worker_jobs"
+        job_root.mkdir(parents=True, exist_ok=True)
+    job_dir = Path(tempfile.mkdtemp(prefix="job_", dir=str(job_root)))
     input_path = job_dir / "input.json"
     output_path = job_dir / "output.json"
     input_path.write_text(
