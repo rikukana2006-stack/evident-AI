@@ -502,7 +502,7 @@ def parse_paddle_position_row(row: list[dict[str, object]]) -> dict[str, object]
     tax_rate = 10
     page_width = max(float(cell.get("page_width") or cell["x2"]) for cell in row)
     row_text = " ".join(str(cell["text"]) for cell in row)
-    if "8%" in row_text or "8％" in row_text or "★" in row_text or "食料品" in row_text:
+    if has_reduced_tax_marker(row_text):
         tax_rate = 8
 
     for cell in row:
@@ -530,6 +530,8 @@ def parse_paddle_position_row(row: list[dict[str, object]]) -> dict[str, object]
     if unit_price <= 0:
         unit_price = amount
     quantity, unit_price, amount = normalize_paddle_line_numbers(quantity, unit_price, amount)
+    if has_reduced_tax_marker(f"{row_text} {item_name}"):
+        tax_rate = 8
 
     return {
         "item_name": item_name,
@@ -538,6 +540,19 @@ def parse_paddle_position_row(row: list[dict[str, object]]) -> dict[str, object]
         "amount": amount,
         "tax_rate": tax_rate,
     }
+
+
+def has_reduced_tax_marker(text: str) -> bool:
+    compact = re.sub(r"\s+", "", text)
+    if any(marker in compact for marker in ("8%", "8％", "★", "☆", "軽減", "食料品")):
+        return True
+    # On Healthy Food invoices, PaddleOCR often reads the reduced-tax star as
+    # leading characters such as "メ" or "糸" near the item name.
+    if re.search(r"^[メ糸※＊*][^\s]*(明治|アクア|のみや水|ラクーナ)", compact):
+        return True
+    if any(keyword in compact for keyword in ("明治アクア", "アクアサポート", "のみや水", "ラクーナ", "スポーツドリンク")):
+        return True
+    return False
 
 
 def normalize_paddle_line_numbers(quantity: int, unit_price: int, amount: int) -> tuple[int, int, int]:

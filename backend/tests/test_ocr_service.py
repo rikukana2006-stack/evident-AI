@@ -11,6 +11,7 @@ from app.ocr_service import parse_pdf_document, parse_pdf_text_rows, parse_csv_d
 from app.vision_ocr import (
     parse_ocr_text_rows,
     extract_paddle_cells,
+    has_reduced_tax_marker,
     normalize_paddle_line_numbers,
     parse_openai_ocr_response,
     parse_paddle_number,
@@ -156,6 +157,20 @@ def test_run_ocr_assigns_new_sample_vendor_profiles(tmp_path: Path, filename: st
 
     assert document.vendor_profile_id == expected_profile
     assert document.ocr_confidence > 0
+
+
+def test_healthy_food_profile_defaults_items_to_reduced_tax(tmp_path: Path) -> None:
+    csv_path = tmp_path / "\u30d8\u30eb\u30b7\u30fc\u30d5\u30fc\u30c9\u8acb\u6c42\u66f8.csv"
+    csv_path.write_text(
+        "item_name,quantity,unit_price,amount,tax_rate\n"
+        "\u660e\u6cbb\u30a2\u30af\u30a2\u30b5\u30dd\u30fc\u30c8\u30bc\u30ea\u30fc,1,3240,3240,10\n",
+        encoding="utf-8-sig",
+    )
+
+    document = run_ocr("invoice", csv_path.name, str(csv_path))
+
+    assert document.vendor_profile_id == "healthy_food"
+    assert str(document.items[0].tax_rate) == "8"
 
 
 def test_parse_paddle_number_strips_decimal_zero_suffix() -> None:
@@ -442,6 +457,29 @@ def test_parse_paddle_position_rows_handles_shimakyu_invoice_columns() -> None:
         "amount": 18000,
         "tax_rate": 10,
     }
+
+
+def test_parse_paddle_position_row_treats_star_as_reduced_tax() -> None:
+    cells = [
+        {"text": "2026/06/01", "x1": 60, "y1": 870, "x2": 180, "y2": 905, "cx": 120, "cy": 889},
+        {"text": "2250811", "x1": 250, "y1": 870, "x2": 350, "y2": 905, "cx": 300, "cy": 889},
+        {"text": "明治アクアサポートゼリー", "x1": 480, "y1": 870, "x2": 760, "y2": 905, "cx": 620, "cy": 889},
+        {"text": "★", "x1": 850, "y1": 870, "x2": 880, "y2": 905, "cx": 865, "cy": 889},
+        {"text": "1", "x1": 1040, "y1": 870, "x2": 1060, "y2": 905, "cx": 1050, "cy": 889},
+        {"text": "3,240.00", "x1": 1280, "y1": 870, "x2": 1390, "y2": 905, "cx": 1335, "cy": 889},
+        {"text": "3,240", "x1": 1510, "y1": 870, "x2": 1590, "y2": 905, "cx": 1550, "cy": 889},
+    ]
+
+    parsed = parse_paddle_position_row(cells)
+
+    assert parsed is not None
+    assert parsed["tax_rate"] == 8
+
+
+def test_reduced_tax_marker_handles_healthy_food_star_ocr_misread() -> None:
+    assert has_reduced_tax_marker("メ明治アクアサポートゼリー 200g×24")
+    assert has_reduced_tax_marker("糸明治アクアサポートゼリー 200g×24")
+    assert has_reduced_tax_marker("のみや水ほんのリレモン風味")
 
 
 def test_parse_paddle_position_rows_keeps_pages_separate() -> None:

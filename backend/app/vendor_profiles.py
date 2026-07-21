@@ -112,6 +112,12 @@ def enrich_extracted_document(
     vendor_name = document.vendor_name
     if profile.profile_id != "generic" and is_placeholder_vendor_name(vendor_name):
         vendor_name = profile.display_name
+    items = document.items
+    if profile.profile_id == "healthy_food":
+        # Healthy Food marks reduced-tax items with a star. OCR frequently drops
+        # or misreads that mark, so default this vendor's extracted lines to 8%
+        # until we store per-row OCR marker confidence.
+        items = [item.model_copy(update={"tax_rate": 8}) for item in document.items]
     return document.model_copy(
         update={
             "vendor_name": vendor_name,
@@ -119,5 +125,6 @@ def enrich_extracted_document(
             "layout_profile_name": profile.layout_profile_name,
             "ocr_confidence": confidence,
             "ocr_warnings": warnings,
+            "items": items,
         }
     )
