@@ -32,6 +32,34 @@ def numeric_values_match(left: object, right: object, tolerance: Decimal = Decim
     return abs(Decimal(str(left)) - Decimal(str(right))) <= tolerance
 
 
+def numeric_field_status(field: str, delivery_value: object, invoice_value: object, tax_rate: object) -> str:
+    if field in {"unit_price", "amount"}:
+        return price_match_status(delivery_value, invoice_value, tax_rate)
+    return "matched" if values_match(delivery_value, invoice_value) else "different"
+
+
+def numeric_match_score(delivery_item: object, invoice_item: object) -> float:
+    score = 0.0
+    if numeric_field_status("amount", delivery_item.amount, invoice_item.amount, delivery_item.tax_rate) != "different":
+        score += 0.45
+    if numeric_field_status("unit_price", delivery_item.unit_price, invoice_item.unit_price, delivery_item.tax_rate) != "different":
+        score += 0.25
+    if numeric_field_status("quantity", delivery_item.quantity, invoice_item.quantity, delivery_item.tax_rate) == "matched":
+        score += 0.2
+    if numeric_field_status("tax_rate", delivery_item.tax_rate, invoice_item.tax_rate, delivery_item.tax_rate) == "matched":
+        score += 0.1
+    return score
+
+
+def line_match_score(delivery_item: object, invoice_item: object) -> tuple[float, float, float]:
+    name_score = name_similarity(delivery_item.item_name, invoice_item.item_name)
+    number_score = numeric_match_score(delivery_item, invoice_item)
+    # OCR can severely damage Japanese product names. Pair lines when money fields
+    # agree strongly, then route the name to review instead of marking both sides missing.
+    combined_score = max(name_score, number_score, (name_score * 0.45) + (number_score * 0.75))
+    return combined_score, name_score, number_score
+
+
 def price_match_status(delivery_value: object, invoice_value: object, tax_rate: object) -> str:
     if numeric_values_match(delivery_value, invoice_value, Decimal("0")):
         return "matched"
@@ -65,15 +93,19 @@ def compare_documents(
     for delivery_item in delivery.items:
         best_index = -1
         best_score = 0.0
+        best_name_score = 0.0
+        best_number_score = 0.0
         for index, invoice_item in enumerate(invoice.items):
             if index in used_invoice_indexes:
                 continue
-            score = name_similarity(delivery_item.item_name, invoice_item.item_name)
+            score, name_score, number_score = line_match_score(delivery_item, invoice_item)
             if score > best_score:
                 best_score = score
+                best_name_score = name_score
+                best_number_score = number_score
                 best_index = index
 
-        if best_index == -1 or best_score < 0.55:
+        if best_index == -1 or (best_score < 0.55 and best_number_score < 0.45):
             comparisons.append(
                 LineComparison(
                     delivery_item=delivery_item,
@@ -99,7 +131,7 @@ def compare_documents(
         # variations can hide real business mismatches.
         if delivery_item.item_name == invoice_item.item_name:
             name_status = "matched"
-        elif best_score >= 0.55:
+        elif best_name_score >= 0.55 or best_number_score >= 0.45:
             name_status = "name_check_required"
         else:
             name_status = "different"
@@ -117,10 +149,7 @@ def compare_documents(
         for field in ("quantity", "unit_price", "amount", "tax_rate"):
             delivery_value = getattr(delivery_item, field)
             invoice_value = getattr(invoice_item, field)
-            if field in {"unit_price", "amount"}:
-                field_status = price_match_status(delivery_value, invoice_value, delivery_item.tax_rate)
-            else:
-                field_status = "matched" if values_match(delivery_value, invoice_value) else "different"
+            field_status = numeric_field_status(field, delivery_value, invoice_value, delivery_item.tax_rate)
 
             if field_status != "matched":
                 differences.append(
