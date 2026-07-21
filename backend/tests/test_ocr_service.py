@@ -103,6 +103,37 @@ def test_parse_csv_document_with_japanese_items(tmp_path: Path) -> None:
     assert str(document.items[1].unit_price) == "80"
 
 
+def test_run_ocr_assigns_known_vendor_profile_from_filename(tmp_path: Path) -> None:
+    csv_path = tmp_path / "\u30b7\u30de\u30ad\u30e5\u30a6\u8acb\u6c42\u66f8.csv"
+    csv_path.write_text(
+        "item_name,quantity,unit_price,amount,tax_rate\n"
+        "\u534a\u900f\u660e 10\u00d750\u888b,1,6400,6400,10\n",
+        encoding="utf-8-sig",
+    )
+
+    document = run_ocr("invoice", csv_path.name, str(csv_path))
+
+    assert document.vendor_profile_id == "shimakyu"
+    assert document.layout_profile_name == "\u30b7\u30de\u30ad\u30e5\u30a6\u6a19\u6e96\u660e\u7d30\u30ec\u30a4\u30a2\u30a6\u30c8"
+    assert document.vendor_name == "\u30b7\u30de\u30ad\u30e5\u30a6"
+    assert document.ocr_confidence > 0
+
+
+def test_run_ocr_marks_unknown_vendor_as_generic(tmp_path: Path) -> None:
+    csv_path = tmp_path / "new-vendor.csv"
+    csv_path.write_text(
+        "item_name,quantity,unit_price,amount,tax_rate\n"
+        "\u30c6\u30b9\u30c8\u5546\u54c1,2,100,200,10\n",
+        encoding="utf-8-sig",
+    )
+
+    document = run_ocr("invoice", csv_path.name, str(csv_path))
+
+    assert document.vendor_profile_id == "generic"
+    assert document.layout_profile_name == "\u6c4e\u7528OCR\u30ec\u30a4\u30a2\u30a6\u30c8"
+    assert document.ocr_warnings
+
+
 def test_parse_xlsx_document_with_japanese_headers(tmp_path: Path) -> None:
     xlsx_path = tmp_path / "delivery.xlsx"
     xlsx_path.write_bytes(

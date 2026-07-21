@@ -23,6 +23,10 @@ class ExtractedDocument(BaseModel):
     document_number: str
     ocr_note: str | None = None
     ocr_provider: str | None = None
+    vendor_profile_id: str = "generic"
+    layout_profile_name: str = "汎用OCRレイアウト"
+    ocr_confidence: float = Field(default=0, ge=0, le=1)
+    ocr_warnings: list[str] = Field(default_factory=list)
     items: list[Item]
 
 

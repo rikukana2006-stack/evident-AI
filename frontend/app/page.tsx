@@ -32,6 +32,10 @@ type ExtractedDocument = {
   document_number: string;
   ocr_note?: string | null;
   ocr_provider?: string | null;
+  vendor_profile_id?: string;
+  layout_profile_name?: string;
+  ocr_confidence?: number;
+  ocr_warnings?: string[];
   items: Array<{
     item_name: string;
     quantity: number;
@@ -819,6 +823,26 @@ function OcrReviewPanel({ title, value, onChange }: { title: string; value: stri
           <button className="h-9 rounded-md border border-line bg-white px-3 text-sm font-bold" type="button" onClick={addItem}>
             明細を追加
           </button>
+        ) : null}
+      </div>
+
+      <div className="grid gap-2 rounded-md border border-line bg-zinc-50 p-3 text-sm md:grid-cols-3">
+        <div>
+          <div className="text-xs font-bold text-zinc-500">取引先プロファイル</div>
+          <div className="mt-1 font-semibold">{document.vendor_profile_id ?? "generic"}</div>
+        </div>
+        <div>
+          <div className="text-xs font-bold text-zinc-500">使用レイアウト</div>
+          <div className="mt-1 font-semibold">{document.layout_profile_name ?? "汎用OCRレイアウト"}</div>
+        </div>
+        <div>
+          <div className="text-xs font-bold text-zinc-500">読み取り信頼度</div>
+          <div className="mt-1 font-semibold">{Math.round((document.ocr_confidence ?? 0) * 100)}%</div>
+        </div>
+        {document.ocr_warnings?.length ? (
+          <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 md:col-span-3">
+            {document.ocr_warnings.join(" / ")}
+          </div>
         ) : null}
       </div>
 

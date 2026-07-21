@@ -6,6 +6,7 @@ from xml.etree import ElementTree
 
 from app.file_types import get_file_extension, is_image_upload
 from app.schemas import ExtractedDocument
+from app.vendor_profiles import enrich_extracted_document
 from app.vision_ocr import run_vision_ocr
 
 
@@ -323,23 +324,29 @@ def parse_pdf_document(document_type: str, filename: str, storage_path: str) -> 
 def run_ocr(document_type: str, filename: str, storage_path: str) -> ExtractedDocument:
     extension = get_file_extension(filename)
     if is_image_upload(filename):
-        return run_vision_ocr(document_type, filename, storage_path, "image")
+        return enrich_extracted_document(run_vision_ocr(document_type, filename, storage_path, "image"), filename)
     if extension == ".pdf":
-        return parse_pdf_document(document_type, filename, storage_path)
+        return enrich_extracted_document(parse_pdf_document(document_type, filename, storage_path), filename)
     if extension == ".csv":
-        return parse_csv_document(document_type, filename, storage_path)
+        return enrich_extracted_document(parse_csv_document(document_type, filename, storage_path), filename)
     if extension == ".xlsx":
-        return parse_xlsx_document(document_type, filename, storage_path)
+        return enrich_extracted_document(parse_xlsx_document(document_type, filename, storage_path), filename)
     if extension == ".xls":
-        return build_empty_document(
+        return enrich_extracted_document(
+            build_empty_document(
+                document_type,
+                filename,
+                "\u53e4\u3044\u0045\u0078\u0063\u0065\u006c\u5f62\u5f0f\u0028\u002e\u0078\u006c\u0073\u0029\u306f\u73fe\u6642\u70b9\u3067\u306f\u81ea\u52d5\u89e3\u6790\u306b\u672a\u5bfe\u5fdc\u3067\u3059\u3002\u002e\u0078\u006c\u0073\u0078\u307e\u305f\u306f\u0043\u0053\u0056\u306b\u5909\u63db\u3059\u308b\u304b\u3001\u004f\u0043\u0052\u30ec\u30d3\u30e5\u30fc\u3067\u624b\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
+                "spreadsheet:xls_unsupported",
+            ),
+            filename,
+        )
+    return enrich_extracted_document(
+        build_empty_document(
             document_type,
             filename,
-            "\u53e4\u3044\u0045\u0078\u0063\u0065\u006c\u5f62\u5f0f\u0028\u002e\u0078\u006c\u0073\u0029\u306f\u73fe\u6642\u70b9\u3067\u306f\u81ea\u52d5\u89e3\u6790\u306b\u672a\u5bfe\u5fdc\u3067\u3059\u3002\u002e\u0078\u006c\u0073\u0078\u307e\u305f\u306f\u0043\u0053\u0056\u306b\u5909\u63db\u3059\u308b\u304b\u3001\u004f\u0043\u0052\u30ec\u30d3\u30e5\u30fc\u3067\u624b\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002",
-            "spreadsheet:xls_unsupported",
-        )
-    return build_empty_document(
-        document_type,
+            "\u3053\u306e\u30d5\u30a1\u30a4\u30eb\u5f62\u5f0f\u306f\u004f\u0043\u0052\u306e\u81ea\u52d5\u89e3\u6790\u306b\u672a\u5bfe\u5fdc\u3067\u3059\u3002",
+            "unsupported",
+        ),
         filename,
-        "\u3053\u306e\u30d5\u30a1\u30a4\u30eb\u5f62\u5f0f\u306f\u004f\u0043\u0052\u306e\u81ea\u52d5\u89e3\u6790\u306b\u672a\u5bfe\u5fdc\u3067\u3059\u3002",
-        "unsupported",
     )
